@@ -1,6 +1,6 @@
 # JXU-Portal
 
-嘉兴大学校园门户, 由GPT5.4 | Claude-Opus-4.6 强力支援开发
+嘉兴大学校园门户，由 GPT-5.4 | Claude Opus 4.6 辅助开发。
 
 一个把课表、成绩、校园卡、服务大厅什么的一堆东西放到同一个 App 里的 Flutter 项目。
 
@@ -58,9 +58,10 @@ android/       # Android 工程脚手架
 - 本项目为个人开发项目，非学校官方应用
 - 项目仅供学习与交流使用
 
-## Contributors
+## 致谢
 
 - `FHfanshu`
-- Claude code
-- Opencode
-- Codex
+- 学校 H5 基础设施开发者：为校园服务相关 H5 能力建设与流程梳理提供了重要参考
+- `Claude Code`
+- `OpenCode`
+- `Codex`
