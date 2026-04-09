@@ -12,10 +12,10 @@ jobs:
       contents: write
     steps:
       - name: Checkout public repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Checkout private source repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: FHfanshu/ZJXU-portal
           ref: master
@@ -51,3 +51,4 @@ jobs:
           git add lib assets test pubspec.yaml pubspec.lock analysis_options.yaml
           git commit -m "chore: sync private source"
           git push
+
