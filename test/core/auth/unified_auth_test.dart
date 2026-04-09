@@ -38,8 +38,35 @@ void main() {
         isTrue,
       );
       expect(
+        isUnifiedAuthAuthenticatedUrl(
+          'https://libapp.zjxu.edu.cn/Info/Thirdparty/ssoFromDingDing?ticket=abc',
+        ),
+        isTrue,
+      );
+      expect(
         isUnifiedAuthAuthenticatedUrl('/casClient/login/ydd?ticket=abc'),
         isTrue,
+      );
+    });
+
+    test('extracts downstream service url from CAS login pages', () {
+      expect(
+        extractUnifiedAuthServiceUrl(
+          'https://newca.zjxu.edu.cn/cas/login?service=https%3A%2F%2Flibapp.zjxu.edu.cn%2FInfo%2FThirdparty%2FssoFromDingDing',
+        ),
+        'https://libapp.zjxu.edu.cn/Info/Thirdparty/ssoFromDingDing',
+      );
+      expect(
+        extractUnifiedAuthServiceUrl(
+          'https://newca.zjxu.edu.cn/cas/login?service=https%3A%2F%2Fnewca.zjxu.edu.cn%2FcasClient%2Flogin%2Fydd',
+        ),
+        'https://newca.zjxu.edu.cn/casClient/login/ydd',
+      );
+      expect(
+        extractUnifiedAuthServiceUrl(
+          'https://mobilehall.zjxu.edu.cn/mportal/start/index.html#/business/ydd/portal/home',
+        ),
+        isNull,
       );
     });
   });

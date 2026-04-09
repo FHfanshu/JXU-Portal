@@ -12,6 +12,12 @@ import '../../core/logging/app_logger.dart';
 typedef WebViewLoadStopCallback =
     Future<void> Function(InAppWebViewController controller, String currentUrl);
 
+const _serviceHallHomeUrl =
+    'https://mobilehall.zjxu.edu.cn/mportal/start/index.html#/business/ydd/portal/home';
+const _serviceHallHost = 'mobilehall.zjxu.edu.cn';
+const _serviceHallPath = '/mportal/start/index.html';
+const _serviceHallHomeFragment = '/business/ydd/portal/home';
+
 enum WebViewQuickFillKind { zhengfang, unifiedAuth }
 
 WebViewQuickFillKind? detectWebViewQuickFillKind(String currentUrl) {
@@ -26,6 +32,37 @@ WebViewQuickFillKind? detectWebViewQuickFillKind(String currentUrl) {
   return null;
 }
 
+String selectLoadedWebViewUrl({
+  required String fallbackUrl,
+  String? reportedUrl,
+  String? controllerUrl,
+}) {
+  for (final candidate in [controllerUrl, reportedUrl, fallbackUrl]) {
+    final value = candidate?.trim() ?? '';
+    if (value.isNotEmpty) return value;
+  }
+  return '';
+}
+
+bool isServiceHallHomeUrl(String currentUrl) {
+  final raw = currentUrl.trim();
+  if (raw.isEmpty) return false;
+
+  final uri = Uri.tryParse(raw);
+  if (uri == null) return false;
+  if (uri.host.toLowerCase() != _serviceHallHost ||
+      uri.path != _serviceHallPath) {
+    return false;
+  }
+
+  final fragment = uri.fragment.trim();
+  if (fragment.isEmpty) return false;
+
+  final fragmentPath =
+      '/${fragment.split('?').first.replaceFirst(RegExp(r'^/+'), '')}';
+  return fragmentPath == _serviceHallHomeFragment;
+}
+
 /// Reusable full-screen WebView page with progress bar and error handling.
 class WebViewPage extends StatefulWidget {
   const WebViewPage({
@@ -35,6 +72,9 @@ class WebViewPage extends StatefulWidget {
     this.initialHeaders = const {},
     this.onLoadStop,
     this.enableLoginQuickFill = false,
+    this.preferWebViewBackNavigation = false,
+    this.onHomePressed,
+    this.appBarActions = const [],
   });
 
   final String title;
@@ -42,20 +82,20 @@ class WebViewPage extends StatefulWidget {
   final Map<String, String> initialHeaders;
   final WebViewLoadStopCallback? onLoadStop;
   final bool enableLoginQuickFill;
+  final bool preferWebViewBackNavigation;
+  final VoidCallback? onHomePressed;
+  final List<Widget> appBarActions;
 
   @override
   State<WebViewPage> createState() => _WebViewPageState();
 }
 
 class _WebViewPageState extends State<WebViewPage> {
-  static const _serviceHallHomeUrl =
-      'https://mobilehall.zjxu.edu.cn/mportal/start/index.html#/business/ydd/portal/home';
-  static const _serviceHallHost = 'mobilehall.zjxu.edu.cn';
-
   double _progress = 0;
   bool _hasError = false;
   bool _hasShownEnvHint = false;
   bool _hasFallbackToHome = false;
+  bool _allowRoutePop = false;
   late String _currentUrl;
   InAppWebViewController? _controller;
   (String, String)? _savedZhengfangCredentials;
@@ -73,8 +113,7 @@ class _WebViewPageState extends State<WebViewPage> {
     }
   }
 
-  void _trackCurrentUrl(WebUri? url) {
-    final value = url?.toString();
+  void _trackCurrentUrlValue(String? value) {
     if (value == null || value.isEmpty) return;
 
     _currentUrl = value;
@@ -85,6 +124,41 @@ class _WebViewPageState extends State<WebViewPage> {
       setState(() => _quickFillKind = nextKind);
     } else {
       _quickFillKind = nextKind;
+    }
+  }
+
+  void _trackCurrentUrl(WebUri? url) {
+    _trackCurrentUrlValue(url?.toString());
+  }
+
+  Future<String> _resolveLoadedUrl(
+    InAppWebViewController controller,
+    WebUri? reportedUrl,
+  ) async {
+    final reportedValue = reportedUrl?.toString();
+    try {
+      final controllerValue = (await controller.getUrl())?.toString();
+      final resolved = selectLoadedWebViewUrl(
+        fallbackUrl: _currentUrl,
+        reportedUrl: reportedValue,
+        controllerUrl: controllerValue,
+      );
+      if (reportedValue != null &&
+          reportedValue.isNotEmpty &&
+          controllerValue != null &&
+          controllerValue.isNotEmpty &&
+          reportedValue != controllerValue) {
+        AppLogger.instance.debug(
+          'WebView load stop URL 修正: reported=$reportedValue actual=$controllerValue',
+        );
+      }
+      return resolved;
+    } catch (error) {
+      AppLogger.instance.debug('获取 WebView 当前 URL 失败：$error');
+      return selectLoadedWebViewUrl(
+        fallbackUrl: _currentUrl,
+        reportedUrl: reportedValue,
+      );
     }
   }
 
@@ -106,6 +180,48 @@ class _WebViewPageState extends State<WebViewPage> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<bool> _goBackInWebViewIfPossible() async {
+    final controller = _controller;
+    if (controller == null || _hasError) return false;
+
+    try {
+      final canGoBack = await controller.canGoBack();
+      if (!canGoBack) return false;
+      await controller.goBack();
+      return true;
+    } catch (error) {
+      AppLogger.instance.debug('WebView 返回上一页失败：$_currentUrl :: $error');
+      return false;
+    }
+  }
+
+  Future<bool> _handleWillPop() async {
+    if (widget.onHomePressed != null && isServiceHallHomeUrl(_currentUrl)) {
+      widget.onHomePressed!.call();
+      return false;
+    }
+
+    if (!widget.preferWebViewBackNavigation) return true;
+    final handled = await _goBackInWebViewIfPossible();
+    return !handled;
+  }
+
+  Future<void> _handleBackPressed() async {
+    final shouldPopRoute = await _handleWillPop();
+    if (!shouldPopRoute || !mounted) return;
+    await _popRoute();
+  }
+
+  Future<void> _popRoute() async {
+    if (!mounted) return;
+
+    setState(() => _allowRoutePop = true);
+    final didPop = await Navigator.of(context).maybePop();
+    if (mounted && !didPop) {
+      setState(() => _allowRoutePop = false);
+    }
   }
 
   Future<void> _reloadCurrentPage() async {
@@ -427,34 +543,93 @@ class _WebViewPageState extends State<WebViewPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.title),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _reloadCurrentPage,
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: Stack(
-              children: [
-                if (_hasError)
-                  _buildError()
-                else
-                  InAppWebView(
-                    initialUrlRequest: URLRequest(
-                      url: WebUri(widget.url),
-                      headers: widget.initialHeaders.isEmpty
-                          ? null
-                          : Map<String, String>.from(widget.initialHeaders),
-                    ),
-                    initialUserScripts: UnmodifiableListView([
-                      UserScript(
-                        source: '''
+    final canPopRoute = Navigator.of(context).canPop();
+    final showHomeButton = widget.onHomePressed != null;
+    final shouldInterceptRoutePop =
+        widget.preferWebViewBackNavigation || showHomeButton;
+    final useHomeBackButton =
+        showHomeButton && isServiceHallHomeUrl(_currentUrl);
+    final useWebViewBackButton =
+        widget.preferWebViewBackNavigation && !useHomeBackButton;
+    final showRouteBackButton =
+        !useHomeBackButton && !useWebViewBackButton && canPopRoute;
+    final hasCustomLeading =
+        useHomeBackButton ||
+        useWebViewBackButton ||
+        showRouteBackButton ||
+        showHomeButton;
+    final leadingButtonCount = [
+      if (useHomeBackButton || useWebViewBackButton || showRouteBackButton)
+        true,
+      if (showHomeButton) true,
+    ].length;
+
+    return PopScope<void>(
+      canPop: !shouldInterceptRoutePop || _allowRoutePop,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop || _allowRoutePop || !shouldInterceptRoutePop) return;
+        _handleBackPressed();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          automaticallyImplyLeading: !hasCustomLeading,
+          leadingWidth: hasCustomLeading ? leadingButtonCount * 48 : null,
+          leading: hasCustomLeading
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (useHomeBackButton)
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back),
+                        tooltip: '返回主页',
+                        onPressed: widget.onHomePressed,
+                      )
+                    else if (useWebViewBackButton)
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back),
+                        onPressed: _handleBackPressed,
+                      )
+                    else if (showRouteBackButton)
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back),
+                        onPressed: _handleBackPressed,
+                      ),
+                    if (showHomeButton)
+                      IconButton(
+                        icon: const Icon(Icons.home_outlined),
+                        tooltip: '返回主页',
+                        onPressed: widget.onHomePressed,
+                      ),
+                  ],
+                )
+              : null,
+          title: Text(widget.title),
+          actions: [
+            ...widget.appBarActions,
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: _reloadCurrentPage,
+            ),
+          ],
+        ),
+        body: Column(
+          children: [
+            Expanded(
+              child: Stack(
+                children: [
+                  if (_hasError)
+                    _buildError()
+                  else
+                    InAppWebView(
+                      initialUrlRequest: URLRequest(
+                        url: WebUri(widget.url),
+                        headers: widget.initialHeaders.isEmpty
+                            ? null
+                            : Map<String, String>.from(widget.initialHeaders),
+                      ),
+                      initialUserScripts: UnmodifiableListView([
+                        UserScript(
+                          source: '''
 (function() {
   var ddMock = {
     ready: function(cb) { if (typeof cb === 'function') setTimeout(cb, 0); },
@@ -493,127 +668,134 @@ class _WebViewPageState extends State<WebViewPage> {
   }
 })();
 ''',
-                        injectionTime:
-                            UserScriptInjectionTime.AT_DOCUMENT_START,
+                          injectionTime:
+                              UserScriptInjectionTime.AT_DOCUMENT_START,
+                        ),
+                      ]),
+                      initialSettings: InAppWebViewSettings(
+                        javaScriptEnabled: true,
+                        domStorageEnabled: true,
+                        useShouldOverrideUrlLoading: true,
+                        useHybridComposition: true,
+                        allowsInlineMediaPlayback: true,
+                        mixedContentMode:
+                            MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
+                        thirdPartyCookiesEnabled: true,
+                        supportMultipleWindows: false,
+                        useWideViewPort: true,
+                        loadWithOverviewMode: true,
+                        applicationNameForUserAgent: ' DingTalk/7.0.0',
                       ),
-                    ]),
-                    initialSettings: InAppWebViewSettings(
-                      javaScriptEnabled: true,
-                      domStorageEnabled: true,
-                      useShouldOverrideUrlLoading: true,
-                      useHybridComposition: true,
-                      allowsInlineMediaPlayback: true,
-                      mixedContentMode:
-                          MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
-                      thirdPartyCookiesEnabled: true,
-                      supportMultipleWindows: false,
-                      useWideViewPort: true,
-                      loadWithOverviewMode: true,
-                      applicationNameForUserAgent: ' DingTalk/7.0.0',
-                    ),
-                    onWebViewCreated: (c) {
-                      _controller = c;
-                      c.addJavaScriptHandler(
-                        handlerName: 'ddReady',
-                        callback: (args) => {'success': true},
-                      );
-                    },
-                    onLoadStart: (_, url) {
-                      _trackCurrentUrl(url);
-                      AppLogger.instance.info(
-                        'WebView load start: $_currentUrl',
-                      );
-                      if (!mounted) return;
-                      setState(() {
-                        _hasError = false;
-                        _progress = 0;
-                      });
-                    },
-                    onLoadStop: (controller, url) async {
-                      if (!mounted) return;
-                      _trackCurrentUrl(url);
-
-                      // Service hall SSO strips the fragment id= param during redirect.
-                      // Detect landing on /wfw without id and reload the original URL.
-                      if (widget.url.contains('/business/ydd/wfw/id=') &&
-                          _currentUrl.contains('/business/ydd/wfw') &&
-                          !_currentUrl.contains('/id=')) {
-                        await controller.loadUrl(
-                          urlRequest: URLRequest(url: WebUri(widget.url)),
+                      onWebViewCreated: (c) {
+                        _controller = c;
+                        c.addJavaScriptHandler(
+                          handlerName: 'ddReady',
+                          callback: (args) => {'success': true},
                         );
-                        return;
-                      }
+                      },
+                      onLoadStart: (_, url) {
+                        _trackCurrentUrl(url);
+                        AppLogger.instance.info(
+                          'WebView load start: $_currentUrl',
+                        );
+                        if (!mounted) return;
+                        setState(() {
+                          _hasError = false;
+                          _progress = 0;
+                        });
+                      },
+                      onLoadStop: (controller, url) async {
+                        if (!mounted) return;
+                        final resolvedUrl = await _resolveLoadedUrl(
+                          controller,
+                          url,
+                        );
+                        _trackCurrentUrlValue(resolvedUrl);
 
-                      await _inspectLoadedPage(controller);
+                        // Service hall SSO strips the fragment id= param during redirect.
+                        // Detect landing on /wfw without id and reload the original URL.
+                        if (widget.url.contains('/business/ydd/wfw/id=') &&
+                            _currentUrl.contains('/business/ydd/wfw') &&
+                            !_currentUrl.contains('/id=')) {
+                          await controller.loadUrl(
+                            urlRequest: URLRequest(url: WebUri(widget.url)),
+                          );
+                          return;
+                        }
 
-                      final callback = widget.onLoadStop;
-                      if (callback != null) {
-                        await callback(controller, _currentUrl);
-                      }
-                    },
-                    onUpdateVisitedHistory: (_, url, _) =>
-                        _trackCurrentUrl(url),
-                    shouldOverrideUrlLoading:
-                        (controller, navigationAction) async {
-                          final uri = navigationAction.request.url?.uriValue;
-                          if (uri == null) return NavigationActionPolicy.ALLOW;
+                        await _inspectLoadedPage(controller);
 
-                          final scheme = uri.scheme.toLowerCase();
-                          if (scheme == 'http' || scheme == 'https') {
-                            return NavigationActionPolicy.ALLOW;
-                          }
+                        final callback = widget.onLoadStop;
+                        if (callback != null) {
+                          await callback(controller, _currentUrl);
+                        }
+                      },
+                      onUpdateVisitedHistory: (_, url, _) =>
+                          _trackCurrentUrl(url),
+                      shouldOverrideUrlLoading:
+                          (controller, navigationAction) async {
+                            final uri = navigationAction.request.url?.uriValue;
+                            if (uri == null) {
+                              return NavigationActionPolicy.ALLOW;
+                            }
 
-                          if (await canLaunchUrl(uri)) {
-                            await launchUrl(
-                              uri,
-                              mode: LaunchMode.externalApplication,
-                            );
-                          }
-                          return NavigationActionPolicy.CANCEL;
-                        },
-                    onConsoleMessage: (controller, consoleMessage) {
-                      _handleConsoleMessage(controller, consoleMessage);
-                    },
-                    onProgressChanged: (_, p) {
-                      if (!mounted) return;
-                      setState(() => _progress = p / 100);
-                    },
-                    onReceivedHttpError: (_, request, response) {
-                      if (!(request.isForMainFrame ?? false)) return;
+                            final scheme = uri.scheme.toLowerCase();
+                            if (scheme == 'http' || scheme == 'https') {
+                              return NavigationActionPolicy.ALLOW;
+                            }
 
-                      AppLogger.instance.error(
-                        'WebView HTTP 错误: ${response.statusCode} ${response.reasonPhrase ?? ''} url=${request.url}',
-                      );
+                            if (await canLaunchUrl(uri)) {
+                              await launchUrl(
+                                uri,
+                                mode: LaunchMode.externalApplication,
+                              );
+                            }
+                            return NavigationActionPolicy.CANCEL;
+                          },
+                      onConsoleMessage: (controller, consoleMessage) {
+                        _handleConsoleMessage(controller, consoleMessage);
+                      },
+                      onProgressChanged: (_, p) {
+                        if (!mounted) return;
+                        setState(() => _progress = p / 100);
+                      },
+                      onReceivedHttpError: (_, request, response) {
+                        if (!(request.isForMainFrame ?? false)) return;
 
-                      if (!mounted) return;
-                      setState(() {
-                        _hasError = true;
-                        _controller = null;
-                        _progress = 0;
-                      });
-                    },
-                    onReceivedError: (_, request, error) {
-                      if (!(request.isForMainFrame ?? false)) return;
+                        AppLogger.instance.error(
+                          'WebView HTTP 错误: ${response.statusCode} ${response.reasonPhrase ?? ''} url=${request.url}',
+                        );
 
-                      AppLogger.instance.error(
-                        'WebView 加载失败: code=${error.type} desc=${error.description} url=${request.url}',
-                      );
+                        if (!mounted) return;
+                        setState(() {
+                          _hasError = true;
+                          _controller = null;
+                          _progress = 0;
+                        });
+                      },
+                      onReceivedError: (_, request, error) {
+                        if (!(request.isForMainFrame ?? false)) return;
 
-                      if (!mounted) return;
-                      setState(() {
-                        _hasError = true;
-                        _controller = null;
-                        _progress = 0;
-                      });
-                    },
-                  ),
-                if (_progress < 1 && !_hasError)
-                  LinearProgressIndicator(value: _progress),
-              ],
+                        AppLogger.instance.error(
+                          'WebView 加载失败: code=${error.type} desc=${error.description} url=${request.url}',
+                        );
+
+                        if (!mounted) return;
+                        setState(() {
+                          _hasError = true;
+                          _controller = null;
+                          _progress = 0;
+                        });
+                      },
+                    ),
+                  if (_progress < 1 && !_hasError)
+                    LinearProgressIndicator(value: _progress),
+                ],
+              ),
             ),
-          ),
-          _buildQuickFillBar(),
-        ],
+            _buildQuickFillBar(),
+          ],
+        ),
       ),
     );
   }

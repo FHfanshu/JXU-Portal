@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jiaxing_university_portal/app/app_bootstrap_controller.dart';
@@ -94,5 +95,47 @@ void main() {
     expect(find.textContaining('课表更新于'), findsOneWidget);
     expect(find.text('线性代数'), findsOneWidget);
     expect(find.text('明天 08:00-08:40'), findsOneWidget);
+  });
+
+  testWidgets('payment code label uses scale down layout', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await tester.pump();
+
+    expect(find.text('付款码'), findsOneWidget);
+    final fittedBox = tester.widget<FittedBox>(
+      find
+          .ancestor(of: find.text('付款码'), matching: find.byType(FittedBox))
+          .first,
+    );
+    expect(fittedBox.fit, BoxFit.scaleDown);
+  });
+
+  testWidgets('library tile navigates to dedicated library entry', (
+    tester,
+  ) async {
+    final router = GoRouter(
+      routes: [
+        GoRoute(
+          path: '/',
+          name: 'home',
+          builder: (context, state) => const HomePage(),
+        ),
+        GoRoute(
+          path: '/library',
+          name: 'library',
+          builder: (context, state) => const Scaffold(body: Text('图书馆页面')),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pump();
+
+    await tester.ensureVisible(find.text('图书馆'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('图书馆'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('图书馆页面'), findsOneWidget);
   });
 }

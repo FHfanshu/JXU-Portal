@@ -64,4 +64,34 @@ void main() {
       );
     });
   });
+
+  group('zhengfang auth html classifiers', () {
+    test('recognizes the real login form html', () {
+      const loginHtml = '''
+<title>教学管理信息服务平台</title>
+<form action="/jwglxt/xtgl/login_slogin.html" method="post">
+  <input type="hidden" id="csrftoken" name="csrftoken" value="token" />
+  <h5>用户登录</h5>
+  <input type="text" class="form-control" name="yhm" id="yhm" />
+  <input type="text" class="form-control" name="mm" id="mm" />
+  <input name="yzm" type="text" id="yzm" class="form-control" />
+  <button type="button" id="dl">登 录</button>
+</form>
+<script src="/jwglxt/js/globalweb/login/login.js"></script>
+''';
+
+      expect(looksLikeZhengfangLoginHtml(loginHtml), isTrue);
+    });
+
+    test('does not treat authenticated home html as login page', () {
+      const authenticatedHtml = '''
+<title>教学管理信息服务平台</title>
+<div>欢迎使用嘉兴大学教学综合服务平台</div>
+<a href="/jwglxt/xtgl/index_initMenu.html?jsdm=xs">首页</a>
+<script>window.user = { name: '测试同学' };</script>
+''';
+
+      expect(looksLikeZhengfangLoginHtml(authenticatedHtml), isFalse);
+    });
+  });
 }

@@ -1,4 +1,6 @@
 import 'package:go_router/go_router.dart';
+
+import 'app_route_observer.dart';
 import 'app_shell_page.dart';
 import '../features/home/home_page.dart';
 import '../features/my/my_page.dart';
@@ -19,6 +21,7 @@ import '../features/changxing_jiada/changxing_jiada_page.dart';
 import '../features/changxing_jiada/changxing_leave_form_page.dart';
 import '../features/changxing_jiada/changxing_overtime_form_page.dart';
 import '../features/changxing_jiada/changxing_jiada_model.dart';
+import '../shared/widgets/unified_auth_protected_webview_page.dart';
 import '../shared/widgets/webview_page.dart';
 
 int? _parseOptionalId(GoRouterState state) {
@@ -29,6 +32,7 @@ int? _parseOptionalId(GoRouterState state) {
 
 final GoRouter appRouter = GoRouter(
   initialLocation: '/',
+  observers: [appRouteObserver],
   routes: [
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) {
@@ -79,6 +83,19 @@ final GoRouter appRouter = GoRouter(
       path: '/service-hall',
       name: 'service-hall',
       builder: (context, state) => const ServiceHallPage(),
+    ),
+    GoRoute(
+      path: '/library',
+      name: 'library',
+      builder: (context, state) => UnifiedAuthProtectedWebViewPage(
+        title: '图书馆',
+        url: 'https://libapp.zjxu.edu.cn/#!/Content/Index/index',
+        serviceUrl:
+            'https://libapp.zjxu.edu.cn/Info/Thirdparty/ssoFromDingDing',
+        loginDescription: '统一认证登录后可直接进入图书馆',
+        preferWebViewBackNavigation: true,
+        onHomePressed: () => context.goNamed('home'),
+      ),
     ),
     GoRoute(
       path: '/settings',

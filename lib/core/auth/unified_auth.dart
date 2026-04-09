@@ -44,7 +44,21 @@ bool isUnifiedAuthAuthenticatedUrl(String currentUrl) {
   if (host == 'newca.zjxu.edu.cn') {
     return path.contains('/casclient/login');
   }
-  return host == 'mobilehall.zjxu.edu.cn' || host == 'app.xiaoyuan.ccb.com';
+  return host == 'mobilehall.zjxu.edu.cn' ||
+      host == 'app.xiaoyuan.ccb.com' ||
+      host == 'libapp.zjxu.edu.cn';
+}
+
+String? extractUnifiedAuthServiceUrl(String currentUrl) {
+  final raw = currentUrl.trim();
+  if (raw.isEmpty) return null;
+
+  final uri = Uri.tryParse(raw);
+  if (uri == null || !isUnifiedAuthLoginEntryUrl(raw)) return null;
+
+  final serviceUrl = uri.queryParameters['service']?.trim();
+  if (serviceUrl == null || serviceUrl.isEmpty) return null;
+  return serviceUrl;
 }
 
 bool looksLikeUnifiedAuthLoginHtml(String html) {

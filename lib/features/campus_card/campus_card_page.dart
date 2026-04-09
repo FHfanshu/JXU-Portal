@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/theme.dart';
 import '../../core/logging/app_logger.dart';
@@ -17,6 +18,19 @@ class CampusCardPage extends StatefulWidget {
 class _CampusCardPageState extends State<CampusCardPage> {
   static const _serviceHallHost = 'mobilehall.zjxu.edu.cn';
   static const _statusPathKeyword = '/decision/view/form';
+  static const _easyCampusWechatAppId = 'wx73282a5b4a6708c1';
+  static final _easyCampusRechargeAuthUri = Uri.parse(
+    'https://open.weixin.qq.com/connect/oauth2/authorize?appid=wx73282a5b4a6708c1&redirect_uri=https%3A%2F%2Fauth.xiaofubao.com%2Fwechat%2Fopen%2Foauth%2Fcallback%2Fwx8fddf03d92fd6fa9%2F10354&response_type=code&scope=snsapi_base&state=6697d9a002754598b753c9f74c8ee903&component_appid=wx8fddf03d92fd6fa9&connect_redirect=1#wechat_redirect',
+  );
+  static final _easyCampusRechargeWechatWebViewUri = Uri(
+    scheme: 'weixin',
+    host: 'dl',
+    path: '/businessWebview/link/',
+    queryParameters: {
+      'appid': _easyCampusWechatAppId,
+      'url': _easyCampusRechargeAuthUri.toString(),
+    },
+  );
 
   bool _capturedInCurrentDetailPage = false;
   bool _autoPopAfterCapture = false;
@@ -163,9 +177,9 @@ class _CampusCardPageState extends State<CampusCardPage> {
           child: _CampusCardActionCard(
             icon: Icons.add_circle_outline,
             title: '充值',
-            subtitle: '进入校园卡充值',
+            subtitle: '打开微信认证充值页',
             color: AppColors.success,
-            onTap: () => _openCampusCardWebView(title: '校园卡充值'),
+            onTap: _openRechargeAuthPage,
           ),
         ),
         const SizedBox(width: 12),
@@ -203,6 +217,38 @@ class _CampusCardPageState extends State<CampusCardPage> {
 
     if (!mounted) return;
     setState(() {});
+  }
+
+  Future<void> _openRechargeAuthPage() async {
+    try {
+      AppLogger.instance.info('校园卡充值：尝试通过微信 businessWebview 打开认证页');
+      final launched = await launchUrl(
+        _easyCampusRechargeWechatWebViewUri,
+        mode: LaunchMode.externalApplication,
+      );
+      AppLogger.instance.info('校园卡充值：businessWebview launched=$launched');
+      if (launched || !mounted) return;
+    } catch (error) {
+      AppLogger.instance.error('校园卡充值：businessWebview 拉起失败 :: $error');
+      if (!mounted) return;
+    }
+
+    try {
+      AppLogger.instance.info('校园卡充值：尝试直接打开微信 OAuth H5');
+      final launched = await launchUrl(
+        _easyCampusRechargeAuthUri,
+        mode: LaunchMode.externalApplication,
+      );
+      AppLogger.instance.info('校园卡充值：oauth h5 launched=$launched');
+      if (launched || !mounted) return;
+    } catch (error) {
+      AppLogger.instance.error('校园卡充值：oauth h5 拉起失败 :: $error');
+      if (!mounted) return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('未能调用微信打开认证页，请确认已安装微信并允许外部跳转')),
+    );
   }
 
   Future<void> _captureBalanceFromDetailPage(

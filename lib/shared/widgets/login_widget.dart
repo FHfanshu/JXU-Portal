@@ -279,7 +279,6 @@ class _LoginWidgetState extends State<LoginWidget> {
     if (!mounted) return;
     switch (result) {
       case LoginSuccess():
-        ZhengfangAuth.instance.markLoggedIn();
         await CredentialStore.instance.saveCredentials(username, password);
         widget.onLoginSuccess();
       case LoginFailure(:final message):

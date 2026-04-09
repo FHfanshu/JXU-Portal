@@ -957,17 +957,30 @@ class _CourseCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final overlayColor = isCurrentWeek
-        ? color.withValues(alpha: 0.1)
-        : Colors.grey.withValues(alpha: 0.06);
-    final contentColor = isCurrentWeek ? color : Colors.grey.shade500;
+        ? color.withValues(alpha: isDark ? 0.18 : 0.1)
+        : (isDark
+              ? Colors.white.withValues(alpha: 0.04)
+              : Colors.grey.withValues(alpha: 0.06));
+    final cellBackgroundColor = isDark
+        ? cs.surfaceContainerHigh
+        : cs.surfaceContainerLowest;
+    final titleColor = isCurrentWeek
+        ? (isDark ? Color.lerp(color, Colors.white, 0.24)! : color)
+        : (isDark ? Colors.grey.shade300 : Colors.grey.shade500);
+    final metaColor = isCurrentWeek
+        ? (isDark
+              ? Color.lerp(color, Colors.white, 0.14)!
+              : titleColor.withValues(alpha: 0.75))
+        : (isDark ? Colors.grey.shade400 : titleColor.withValues(alpha: 0.75));
 
     return Container(
       width: dayColumnWidth,
       height: _ScheduleGrid._slotHeight * span,
       padding: const EdgeInsets.all(2),
       child: Material(
-        color: cs.surfaceContainerLowest,
+        color: cellBackgroundColor,
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
           onTap: () => _showCourseDetail(context),
@@ -1027,7 +1040,7 @@ class _CourseCell extends StatelessWidget {
                                   style: TextStyle(
                                     fontSize: titleFontSize,
                                     fontWeight: FontWeight.w600,
-                                    color: contentColor,
+                                    color: titleColor,
                                     height: dense ? 1.1 : 1.18,
                                   ),
                                   maxLines: titleLines,
@@ -1043,7 +1056,7 @@ class _CourseCell extends StatelessWidget {
                                   course.classroom,
                                   style: TextStyle(
                                     fontSize: metaFontSize,
-                                    color: contentColor.withValues(alpha: 0.75),
+                                    color: metaColor,
                                   ),
                                   maxLines: classroomMaxLines,
                                   overflow: TextOverflow.ellipsis,
@@ -1059,7 +1072,7 @@ class _CourseCell extends StatelessWidget {
                                   course.teacherName,
                                   style: TextStyle(
                                     fontSize: metaFontSize,
-                                    color: contentColor.withValues(alpha: 0.75),
+                                    color: metaColor,
                                   ),
                                   maxLines: teacherMaxLines,
                                   overflow: TextOverflow.ellipsis,

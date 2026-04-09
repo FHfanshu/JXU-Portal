@@ -14,6 +14,9 @@ class UnifiedAuthProtectedWebViewPage extends StatefulWidget {
     this.serviceUrl = UnifiedAuthService.defaultServiceUrl,
     this.loginDescription = '账号为校园一卡通号',
     this.onLoadStop,
+    this.preferWebViewBackNavigation = false,
+    this.onHomePressed,
+    this.appBarActions = const [],
   });
 
   final String title;
@@ -21,6 +24,9 @@ class UnifiedAuthProtectedWebViewPage extends StatefulWidget {
   final String serviceUrl;
   final String loginDescription;
   final WebViewLoadStopCallback? onLoadStop;
+  final bool preferWebViewBackNavigation;
+  final VoidCallback? onHomePressed;
+  final List<Widget> appBarActions;
 
   @override
   State<UnifiedAuthProtectedWebViewPage> createState() =>
@@ -82,8 +88,11 @@ class _UnifiedAuthProtectedWebViewPageState
       // 第一次：重新同步 cookie 后重新加载
       _resyncing = true;
       await UnifiedAuthService.instance.syncCookiesToWebView();
-      AppLogger.instance.debug('Cookie 重同步完成，重新加载 WebView');
-      await controller.loadUrl(urlRequest: URLRequest(url: WebUri(widget.url)));
+      final retryUrl =
+          extractUnifiedAuthServiceUrl(currentUrl) ??
+          (currentUrl.trim().isNotEmpty ? currentUrl : widget.url);
+      AppLogger.instance.debug('Cookie 重同步完成，重新加载 WebView: $retryUrl');
+      await controller.loadUrl(urlRequest: URLRequest(url: WebUri(retryUrl)));
       return;
     }
 
@@ -94,11 +103,43 @@ class _UnifiedAuthProtectedWebViewPageState
     }
   }
 
+  Widget? _buildAppBarLeading(BuildContext context) {
+    if (widget.onHomePressed == null) return null;
+
+    final canPop = Navigator.of(context).canPop();
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (canPop)
+          IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => Navigator.of(context).maybePop(),
+          ),
+        IconButton(
+          icon: const Icon(Icons.home_outlined),
+          tooltip: '返回主页',
+          onPressed: widget.onHomePressed,
+        ),
+      ],
+    );
+  }
+
+  double? _appBarLeadingWidth(BuildContext context) {
+    if (widget.onHomePressed == null) return null;
+    return Navigator.of(context).canPop() ? 96 : 48;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!_authResolved) {
       return Scaffold(
-        appBar: AppBar(title: Text(widget.title)),
+        appBar: AppBar(
+          automaticallyImplyLeading: widget.onHomePressed == null,
+          leadingWidth: _appBarLeadingWidth(context),
+          leading: _buildAppBarLeading(context),
+          title: Text(widget.title),
+          actions: widget.appBarActions,
+        ),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
@@ -108,11 +149,20 @@ class _UnifiedAuthProtectedWebViewPageState
         title: widget.title,
         url: widget.url,
         onLoadStop: _handleLoadStop,
+        preferWebViewBackNavigation: widget.preferWebViewBackNavigation,
+        onHomePressed: widget.onHomePressed,
+        appBarActions: widget.appBarActions,
       );
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text(widget.title)),
+      appBar: AppBar(
+        automaticallyImplyLeading: widget.onHomePressed == null,
+        leadingWidth: _appBarLeadingWidth(context),
+        leading: _buildAppBarLeading(context),
+        title: Text(widget.title),
+        actions: widget.appBarActions,
+      ),
       body: UnifiedAuthLoginWidget(
         serviceUrl: widget.serviceUrl,
         title: '登录统一认证',

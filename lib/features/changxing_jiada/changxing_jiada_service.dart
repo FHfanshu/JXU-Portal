@@ -88,6 +88,7 @@ class ChangxingJiadaService {
       // 1. 发起 CAS 登录，手动跟随重定向链以提取 tokenId
       var nextUrl = _casLoginUrl;
       String? tokenId;
+      var sawUnifiedAuthRelay = false;
 
       for (var i = 0; i < 10; i++) {
         final response = await dio.get<String>(
@@ -101,17 +102,12 @@ class ChangxingJiadaService {
 
         final statusCode = response.statusCode ?? 0;
         final location = response.headers.value('location') ?? '';
+        final body = response.data ?? '';
 
         if (statusCode >= 300 && statusCode < 400 && location.isNotEmpty) {
-          // 如果被重定向到 CAS 登录页面，说明 session 已失效
-          if (location.contains('/cas/login') &&
-              !location.contains('ticket=')) {
-            AppLogger.instance.info('畅行嘉大：CAS session 已失效，需要重新登录一卡通');
-            UnifiedAuthService.instance.markLoggedOut();
-            throw ChangxingNeedUnifiedAuthException();
-          }
+          final resolvedLocation = _resolveRedirectUrl(nextUrl, location);
           // 检查重定向 URL 中是否包含 tokenId
-          final uri = Uri.tryParse(location);
+          final uri = Uri.tryParse(resolvedLocation);
           if (uri != null) {
             final tid = uri.queryParameters['tokenId'];
             if (tid != null && tid.isNotEmpty) {
@@ -120,13 +116,11 @@ class ChangxingJiadaService {
               break;
             }
           }
-          // 处理相对 URL
-          if (location.startsWith('/') || !location.contains('://')) {
-            final base = Uri.parse(nextUrl);
-            nextUrl = base.resolve(location).toString();
-          } else {
-            nextUrl = location;
+          if (isUnifiedAuthLoginEntryUrl(resolvedLocation)) {
+            sawUnifiedAuthRelay = true;
+            AppLogger.instance.debug('畅行嘉大：进入 CAS 登录中转，继续跟随重定向');
           }
+          nextUrl = resolvedLocation;
           continue;
         }
 
@@ -137,13 +131,19 @@ class ChangxingJiadaService {
           tokenId = tid;
           AppLogger.instance.debug('畅行嘉大：从最终 URL 中提取到 tokenId');
         }
+        if (tokenId == null &&
+            sawUnifiedAuthRelay &&
+            isUnifiedAuthLoginFormResponse(finalUri.toString(), body)) {
+          AppLogger.instance.info('畅行嘉大：CAS session 已失效，需要重新登录一卡通');
+          UnifiedAuthService.instance.markLoggedOut();
+          throw ChangxingNeedUnifiedAuthException();
+        }
         break;
       }
 
       if (tokenId == null || tokenId.isEmpty) {
-        AppLogger.instance.info('畅行嘉大：未获取到 tokenId，需要重新登录一卡通');
-        UnifiedAuthService.instance.markLoggedOut();
-        throw ChangxingNeedUnifiedAuthException();
+        AppLogger.instance.info('畅行嘉大：SSO 链路结束但未获取到 tokenId');
+        throw ChangxingCasLoginException('畅行嘉大登录未完成，请稍后重试');
       }
 
       // 2. 用 tokenId 换取 JWT token
@@ -662,5 +662,18 @@ class ChangxingJiadaService {
     final data = json['data'];
     if (data is Map<String, dynamic>) return data;
     return <String, dynamic>{};
+  }
+
+  String _resolveRedirectUrl(String baseUrl, String location) {
+    if (location.startsWith('/') || !location.contains('://')) {
+      return Uri.parse(baseUrl).resolve(location).toString();
+    }
+    return location;
+  }
+
+  @visibleForTesting
+  static bool isUnifiedAuthLoginFormResponse(String url, String html) {
+    return isUnifiedAuthLoginEntryUrl(url) &&
+        looksLikeUnifiedAuthLoginHtml(html);
   }
 }

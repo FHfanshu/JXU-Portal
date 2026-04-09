@@ -12,6 +12,7 @@ import '../features/campus_card/campus_card_service.dart';
 import '../features/changxing_jiada/changxing_jiada_service.dart';
 import '../features/dorm_electricity/dorm_electricity_service.dart';
 import '../features/schedule/schedule_service.dart';
+import 'text_scale_controller.dart';
 import 'theme_mode_controller.dart';
 
 enum AppBootstrapPhase { idle, warming, localStateReady, completed }
@@ -34,6 +35,7 @@ class AppBootstrapController {
     if (existing != null) return existing;
 
     final future = Future.wait<void>([
+      TextScaleController.instance.init(),
       ThemeModeController.instance.init(),
       SemesterCalendar.instance.init(),
     ]);

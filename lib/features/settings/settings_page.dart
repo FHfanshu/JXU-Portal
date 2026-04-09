@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../app/text_scale_controller.dart';
 import '../../app/theme_mode_controller.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/network/dio_client.dart';
@@ -11,6 +12,8 @@ import '../dorm_electricity/dorm_electricity_service.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
+
+  String _formatScaleFactor(double value) => '${(value * 100).round()}%';
 
   String _formatDate(DateTime date) {
     final y = date.year.toString();
@@ -98,6 +101,74 @@ class SettingsPage extends StatelessWidget {
                             selection.first,
                           );
                         },
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          ValueListenableBuilder<double>(
+            valueListenable: TextScaleController.instance.textScaleFactor,
+            builder: (context, textScaleFactor, child) {
+              return Card(
+                clipBehavior: Clip.antiAlias,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ListTile(
+                      title: const Text('应用字号'),
+                      subtitle: const Text('基于系统字号缩放，最大限制到 120%'),
+                      trailing: Text(_formatScaleFactor(textScaleFactor)),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                      child: Column(
+                        children: [
+                          Slider.adaptive(
+                            min: TextScaleController.minScaleFactor,
+                            max: TextScaleController.maxScaleFactor,
+                            divisions: TextScaleController.sliderDivisions,
+                            label: _formatScaleFactor(textScaleFactor),
+                            value: textScaleFactor,
+                            onChanged: (value) {
+                              TextScaleController.instance.setTextScaleFactor(
+                                value,
+                              );
+                            },
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  '紧凑 ${_formatScaleFactor(TextScaleController.minScaleFactor)}',
+                                  style: textTheme.bodySmall,
+                                ),
+                                Text(
+                                  '上限 ${_formatScaleFactor(TextScaleController.maxScaleFactor)}',
+                                  style: textTheme.bodySmall,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                        child: TextButton(
+                          onPressed: () {
+                            TextScaleController.instance.setTextScaleFactor(
+                              TextScaleController.defaultScaleFactor,
+                            );
+                          },
+                          child: const Text('恢复默认'),
+                        ),
                       ),
                     ),
                   ],

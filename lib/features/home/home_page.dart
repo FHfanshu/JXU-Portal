@@ -707,30 +707,34 @@ class _HomePageState extends State<HomePage> {
                               color: AppColors.primary.withValues(alpha: 0.08),
                               borderRadius: BorderRadius.circular(16),
                             ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                const Icon(
-                                  Icons.qr_code_2_rounded,
-                                  size: 28,
-                                  color: AppColors.primary,
-                                ),
-                                const SizedBox(width: 4),
-                                Expanded(
-                                  child: Text(
-                                    '付款码',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: cs.onSurface,
-                                      height: 1.0,
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    const Icon(
+                                      Icons.qr_code_2_rounded,
+                                      size: 28,
+                                      color: AppColors.primary,
                                     ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.visible,
-                                  ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      '付款码',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: cs.onSurface,
+                                        height: 1.0,
+                                      ),
+                                      maxLines: 1,
+                                    ),
+                                  ],
                                 ),
-                              ],
+                              ),
                             ),
                           ),
                         ),
@@ -955,6 +959,9 @@ class _HomePageState extends State<HomePage> {
                 Icons.local_library_outlined,
                 '图书馆',
                 AppColors.info,
+                onTap: () {
+                  context.pushNamed('library');
+                },
               ),
               const SizedBox(height: 8),
               _buildChangxingJiadaTile(context),
@@ -969,11 +976,12 @@ class _HomePageState extends State<HomePage> {
     BuildContext context,
     IconData icon,
     String label,
-    Color color,
-  ) {
+    Color color, {
+    VoidCallback? onTap,
+  }) {
     final cs = Theme.of(context).colorScheme;
     return InkWell(
-      onTap: null,
+      onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -1005,6 +1013,12 @@ class _HomePageState extends State<HomePage> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
+            if (onTap != null)
+              Icon(
+                Icons.arrow_forward_ios,
+                size: 14,
+                color: cs.onSurfaceVariant,
+              ),
           ],
         ),
       ),
