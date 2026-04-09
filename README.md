@@ -61,4 +61,6 @@ android/       # Android 工程脚手架
 ## Contributors
 
 - `FHfanshu`
-- `3357264605@qq.com`
+- Claude code
+- Opencode
+- Codex
