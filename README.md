@@ -58,6 +58,7 @@ android/       # Android 工程脚手架
 - 本项目为个人开发项目，非学校官方应用
 - 项目仅供学习与交流使用
 
-## Contributor
+## Contributors
 
+- `FHfanshu`
 - `3357264605@qq.com`
