@@ -13,6 +13,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Set up Java
         uses: actions/setup-java@v5
@@ -36,9 +38,46 @@ jobs:
       - name: Prepare release asset
         run: cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/JXU-Portal-${GITHUB_REF_NAME}.apk
 
+      - name: Generate Chinese changelog
+        shell: bash
+        run: |
+          current_tag="${GITHUB_REF_NAME}"
+          previous_tag="$(git tag --sort=-creatordate | grep -Fxv "$current_tag" | head -n 1 || true)"
+
+          if [ -n "$previous_tag" ]; then
+            range="${previous_tag}..${current_tag}"
+            compare_url="https://github.com/${GITHUB_REPOSITORY}/compare/${previous_tag}...${current_tag}"
+          else
+            range="$current_tag"
+            compare_url=""
+          fi
+
+          changelog="$(git log --no-merges --pretty='- %s (`%h`)' "$range" || true)"
+          if [ -z "$changelog" ]; then
+            changelog='- 本版本暂无可归档的提交记录'
+          fi
+
+          {
+            echo "## 中文更新日志"
+            echo
+            echo "- 版本：\`$current_tag\`"
+            if [ -n "$previous_tag" ]; then
+              echo "- 对比版本：\`$previous_tag -> $current_tag\`"
+              echo "- 变更对比：$compare_url"
+            fi
+            echo "- 发布时间：$(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S CST')"
+            echo
+            echo "### 提交记录"
+            echo "$changelog"
+            echo
+            echo "### 安装说明"
+            echo "- 下载下方 APK 后可直接安装"
+            echo "- 如遇覆盖安装提示，请确认安装包来源与签名一致"
+          } > RELEASE_BODY.md
+
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
           files: build/app/outputs/flutter-apk/JXU-Portal-${{ github.ref_name }}.apk
-          generate_release_notes: true
+          body_path: RELEASE_BODY.md
 
