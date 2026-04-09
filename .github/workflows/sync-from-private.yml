@@ -1,0 +1,53 @@
+name: Sync From Private Source
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 */6 * * *'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout public repository
+        uses: actions/checkout@v4
+
+      - name: Checkout private source repository
+        uses: actions/checkout@v4
+        with:
+          repository: FHfanshu/ZJXU-portal
+          ref: master
+          path: source
+          ssh-key: ${{ secrets.SOURCE_REPO_SSH_KEY }}
+          persist-credentials: false
+
+      - name: Sync managed files
+        shell: bash
+        run: |
+          mkdir -p lib assets test
+          rsync -a --delete source/lib/ lib/
+          rsync -a --delete source/assets/ assets/
+          rsync -a --delete source/test/ test/
+          install -m 644 source/pubspec.yaml pubspec.yaml
+          if [ -f source/pubspec.lock ]; then
+            install -m 644 source/pubspec.lock pubspec.lock
+          else
+            rm -f pubspec.lock
+          fi
+          install -m 644 source/analysis_options.yaml analysis_options.yaml
+          rm -rf source
+
+      - name: Commit synced changes
+        shell: bash
+        run: |
+          if [ -z "$(git status --porcelain -- lib assets test pubspec.yaml pubspec.lock analysis_options.yaml)" ]; then
+            echo "No synced changes detected."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib assets test pubspec.yaml pubspec.lock analysis_options.yaml
+          git commit -m "chore: sync private source"
+          git push

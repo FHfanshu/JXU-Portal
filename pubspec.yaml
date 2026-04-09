@@ -1,0 +1,39 @@
+name: jiaxing_university_portal
+description: "嘉兴大学-校园门户 App"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  go_router: ^14.0.0
+  dio: ^5.7.0
+  cookie_jar: ^4.0.8
+  dio_cookie_manager: ^3.1.1
+  flutter_secure_storage: ^9.2.2
+  pointycastle: ^3.9.1
+  flutter_inappwebview: ^6.1.5
+  url_launcher: ^6.3.1
+  html: ^0.15.6
+  shared_preferences: ^2.3.0
+  path_provider: ^2.1.0
+  connectivity_plus: ^6.0.0
+  internet_connection_checker_plus: ^2.5.0
+  package_info_plus: ^8.0.0
+  file_picker: ^10.1.9
+
+  flutter_svg: ^2.0.0
+  qr_flutter: ^4.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/
