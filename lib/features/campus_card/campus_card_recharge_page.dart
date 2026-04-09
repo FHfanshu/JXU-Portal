@@ -1,16 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/config/app_config.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/wechat/wechat_launcher.dart';
 
 class CampusCardRechargePage extends StatefulWidget {
   const CampusCardRechargePage({super.key});
 
-  static const xiaofubaoThirdAppId = 'wx8fddf03d92fd6fa9';
-  static final rechargeHomeUri = Uri.parse(
-    'https://webapp.xiaofubao.com/card/card_home.shtml?platform=WECHAT_H5&schoolCode=10354&thirdAppid=$xiaofubaoThirdAppId',
-  );
+  static Uri get rechargeHomeUri => AppConfig.xiaofubaoRechargeUri;
 
   @override
   State<CampusCardRechargePage> createState() => _CampusCardRechargePageState();
