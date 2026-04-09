@@ -26,7 +26,23 @@ jobs:
       - name: Capture source commit metadata
         shell: bash
         run: |
-          managed_paths=(lib assets test README.md pubspec.yaml pubspec.lock analysis_options.yaml)
+          managed_paths=(
+            lib
+            assets
+            test
+            README.md
+            pubspec.yaml
+            pubspec.lock
+            analysis_options.yaml
+            android/app/src/main
+            android/app/src/debug/AndroidManifest.xml
+            android/app/src/profile/AndroidManifest.xml
+            android/app/build.gradle.kts
+            android/build.gradle.kts
+            android/settings.gradle.kts
+            android/gradle.properties
+            android/gradle/wrapper/gradle-wrapper.properties
+          )
           {
             echo "SOURCE_COMMIT_SHA=$(git -C source log -1 --pretty=%h -- "${managed_paths[@]}")"
             echo "SOURCE_COMMIT_SUBJECT<<EOF"
@@ -40,10 +56,18 @@ jobs:
       - name: Sync managed files
         shell: bash
         run: |
-          mkdir -p lib assets test
+          mkdir -p lib assets test android/app/src/main android/app/src/debug android/app/src/profile android/gradle/wrapper
           rsync -a --delete source/lib/ lib/
           rsync -a --delete source/assets/ assets/
           rsync -a --delete source/test/ test/
+          rsync -a --delete source/android/app/src/main/ android/app/src/main/
+          install -m 644 source/android/app/src/debug/AndroidManifest.xml android/app/src/debug/AndroidManifest.xml
+          install -m 644 source/android/app/src/profile/AndroidManifest.xml android/app/src/profile/AndroidManifest.xml
+          install -m 644 source/android/app/build.gradle.kts android/app/build.gradle.kts
+          install -m 644 source/android/build.gradle.kts android/build.gradle.kts
+          install -m 644 source/android/settings.gradle.kts android/settings.gradle.kts
+          install -m 644 source/android/gradle.properties android/gradle.properties
+          install -m 644 source/android/gradle/wrapper/gradle-wrapper.properties android/gradle/wrapper/gradle-wrapper.properties
           install -m 644 source/README.md README.md
           install -m 644 source/pubspec.yaml pubspec.yaml
           if [ -f source/pubspec.lock ]; then
@@ -57,13 +81,13 @@ jobs:
       - name: Commit synced changes
         shell: bash
         run: |
-          if [ -z "$(git status --porcelain -- lib assets test README.md pubspec.yaml pubspec.lock analysis_options.yaml)" ]; then
+          if [ -z "$(git status --porcelain -- lib assets test android/app/src/main android/app/src/debug/AndroidManifest.xml android/app/src/profile/AndroidManifest.xml android/app/build.gradle.kts android/build.gradle.kts android/settings.gradle.kts android/gradle.properties android/gradle/wrapper/gradle-wrapper.properties README.md pubspec.yaml pubspec.lock analysis_options.yaml)" ]; then
             echo "No synced changes detected."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add lib assets test README.md pubspec.yaml pubspec.lock analysis_options.yaml
+          git add lib assets test android/app/src/main android/app/src/debug/AndroidManifest.xml android/app/src/profile/AndroidManifest.xml android/app/build.gradle.kts android/build.gradle.kts android/settings.gradle.kts android/gradle.properties android/gradle/wrapper/gradle-wrapper.properties README.md pubspec.yaml pubspec.lock analysis_options.yaml
 
           commit_message_file="$(mktemp)"
           printf '%s\n\n' "${SOURCE_COMMIT_SUBJECT:-chore: sync private source}" > "$commit_message_file"
