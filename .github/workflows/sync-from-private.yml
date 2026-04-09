@@ -26,13 +26,14 @@ jobs:
       - name: Capture source commit metadata
         shell: bash
         run: |
+          managed_paths=(lib assets test README.md pubspec.yaml pubspec.lock analysis_options.yaml)
           {
-            echo "SOURCE_COMMIT_SHA=$(git -C source rev-parse --short HEAD)"
+            echo "SOURCE_COMMIT_SHA=$(git -C source log -1 --pretty=%h -- "${managed_paths[@]}")"
             echo "SOURCE_COMMIT_SUBJECT<<EOF"
-            git -C source log -1 --pretty=%s
+            git -C source log -1 --pretty=%s -- "${managed_paths[@]}"
             echo "EOF"
             echo "SOURCE_COMMIT_BODY<<EOF"
-            git -C source log -1 --pretty=%b
+            git -C source log -1 --pretty=%b -- "${managed_paths[@]}"
             echo "EOF"
           } >> "$GITHUB_ENV"
 
