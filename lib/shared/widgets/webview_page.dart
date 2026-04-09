@@ -11,6 +11,11 @@ import '../../core/logging/app_logger.dart';
 
 typedef WebViewLoadStopCallback =
     Future<void> Function(InAppWebViewController controller, String currentUrl);
+typedef WebViewNavigationRequestCallback =
+    Future<NavigationActionPolicy?> Function(
+      InAppWebViewController controller,
+      Uri uri,
+    );
 
 const _serviceHallHomeUrl =
     'https://mobilehall.zjxu.edu.cn/mportal/start/index.html#/business/ydd/portal/home';
@@ -71,7 +76,9 @@ class WebViewPage extends StatefulWidget {
     required this.url,
     this.initialHeaders = const {},
     this.onLoadStop,
+    this.onNavigationRequest,
     this.enableLoginQuickFill = false,
+    this.emulateDingTalkEnvironment = true,
     this.preferWebViewBackNavigation = false,
     this.onHomePressed,
     this.appBarActions = const [],
@@ -81,7 +88,9 @@ class WebViewPage extends StatefulWidget {
   final String url;
   final Map<String, String> initialHeaders;
   final WebViewLoadStopCallback? onLoadStop;
+  final WebViewNavigationRequestCallback? onNavigationRequest;
   final bool enableLoginQuickFill;
+  final bool emulateDingTalkEnvironment;
   final bool preferWebViewBackNavigation;
   final VoidCallback? onHomePressed;
   final List<Widget> appBarActions;
@@ -627,9 +636,10 @@ class _WebViewPageState extends State<WebViewPage> {
                             ? null
                             : Map<String, String>.from(widget.initialHeaders),
                       ),
-                      initialUserScripts: UnmodifiableListView([
-                        UserScript(
-                          source: '''
+                      initialUserScripts: widget.emulateDingTalkEnvironment
+                          ? UnmodifiableListView([
+                              UserScript(
+                                source: '''
 (function() {
   var ddMock = {
     ready: function(cb) { if (typeof cb === 'function') setTimeout(cb, 0); },
@@ -644,6 +654,22 @@ class _WebViewPageState extends State<WebViewPage> {
       util: {
         openLink: function(opts) {
           if (opts && opts.url) { window.location.href = opts.url; }
+        }
+      }
+    },
+    permission: {
+      requestAuthCode: function(opts) {
+        if (opts && typeof opts.onFail === 'function') {
+          opts.onFail({ errorCode: 3, errorMessage: 'not supported' });
+        }
+      }
+    },
+    runtime: {
+      permission: {
+        requestAuthCode: function(opts) {
+          if (opts && typeof opts.onFail === 'function') {
+            opts.onFail({ errorCode: 3, errorMessage: 'not supported' });
+          }
         }
       }
     },
@@ -668,10 +694,11 @@ class _WebViewPageState extends State<WebViewPage> {
   }
 })();
 ''',
-                          injectionTime:
-                              UserScriptInjectionTime.AT_DOCUMENT_START,
-                        ),
-                      ]),
+                                injectionTime:
+                                    UserScriptInjectionTime.AT_DOCUMENT_START,
+                              ),
+                            ])
+                          : null,
                       initialSettings: InAppWebViewSettings(
                         javaScriptEnabled: true,
                         domStorageEnabled: true,
@@ -684,7 +711,10 @@ class _WebViewPageState extends State<WebViewPage> {
                         supportMultipleWindows: false,
                         useWideViewPort: true,
                         loadWithOverviewMode: true,
-                        applicationNameForUserAgent: ' DingTalk/7.0.0',
+                        applicationNameForUserAgent:
+                            widget.emulateDingTalkEnvironment
+                            ? ' DingTalk/7.0.0'
+                            : null,
                       ),
                       onWebViewCreated: (c) {
                         _controller = c;
@@ -737,6 +767,15 @@ class _WebViewPageState extends State<WebViewPage> {
                             final uri = navigationAction.request.url?.uriValue;
                             if (uri == null) {
                               return NavigationActionPolicy.ALLOW;
+                            }
+
+                            final requestCallback = widget.onNavigationRequest;
+                            if (requestCallback != null) {
+                              final policy = await requestCallback(
+                                controller,
+                                uri,
+                              );
+                              if (policy != null) return policy;
                             }
 
                             final scheme = uri.scheme.toLowerCase();

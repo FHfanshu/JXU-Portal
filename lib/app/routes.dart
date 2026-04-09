@@ -98,6 +98,18 @@ final GoRouter appRouter = GoRouter(
       ),
     ),
     GoRoute(
+      path: '/second-classroom',
+      name: 'second-classroom',
+      builder: (context, state) => UnifiedAuthProtectedWebViewPage(
+        title: '第二课堂',
+        url: 'https://twdekt.zjxu.edu.cn/dekt/wx/index?_WXFTL=0',
+        serviceUrl: 'https://twdekt.zjxu.edu.cn/dekt/wx/index?_WXFTL=0',
+        loginDescription: '统一认证账号为校园一卡通号',
+        preferWebViewBackNavigation: true,
+        onHomePressed: () => context.goNamed('home'),
+      ),
+    ),
+    GoRoute(
       path: '/settings',
       name: 'settings',
       builder: (context, state) => const SettingsPage(),

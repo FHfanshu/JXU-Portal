@@ -46,7 +46,8 @@ bool isUnifiedAuthAuthenticatedUrl(String currentUrl) {
   }
   return host == 'mobilehall.zjxu.edu.cn' ||
       host == 'app.xiaoyuan.ccb.com' ||
-      host == 'libapp.zjxu.edu.cn';
+      host == 'libapp.zjxu.edu.cn' ||
+      host == 'twdekt.zjxu.edu.cn';
 }
 
 String? extractUnifiedAuthServiceUrl(String currentUrl) {
@@ -117,6 +118,7 @@ class UnifiedAuthService extends ChangeNotifier {
   static const _newcaOrigin = 'https://newca.zjxu.edu.cn';
   static const _serviceHallOrigin = 'https://mobilehall.zjxu.edu.cn';
   static const _paymentOrigin = 'https://app.xiaoyuan.ccb.com';
+  static const _secondClassroomOrigin = 'https://twdekt.zjxu.edu.cn';
   static const _aesKey = 'key_value_123456';
   static const _aesIv = '0987654321123456';
   static const _requestTimeout = Duration(seconds: 12);
@@ -399,6 +401,7 @@ class UnifiedAuthService extends ChangeNotifier {
       Uri.parse('$_newcaOrigin/cas/login'),
       Uri.parse('$_serviceHallOrigin/webroot/decision/view/form'),
       Uri.parse(_paymentOrigin),
+      Uri.parse('$_secondClassroomOrigin/dekt/wx/index'),
     ];
 
     for (final uri in uris) {

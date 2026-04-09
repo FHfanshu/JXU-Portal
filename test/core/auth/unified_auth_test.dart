@@ -44,6 +44,12 @@ void main() {
         isTrue,
       );
       expect(
+        isUnifiedAuthAuthenticatedUrl(
+          'https://twdekt.zjxu.edu.cn/dekt/wx/index?_WXFTL=0',
+        ),
+        isTrue,
+      );
+      expect(
         isUnifiedAuthAuthenticatedUrl('/casClient/login/ydd?ticket=abc'),
         isTrue,
       );

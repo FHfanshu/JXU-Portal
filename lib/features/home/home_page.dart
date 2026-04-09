@@ -952,6 +952,9 @@ class _HomePageState extends State<HomePage> {
                 Icons.workspace_premium_outlined,
                 '第二课堂',
                 AppColors.gold,
+                onTap: () {
+                  context.pushNamed('second-classroom');
+                },
               ),
               const SizedBox(height: 8),
               _buildLearningServiceItem(
@@ -984,7 +987,7 @@ class _HomePageState extends State<HomePage> {
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(12),
@@ -992,15 +995,15 @@ class _HomePageState extends State<HomePage> {
         child: Row(
           children: [
             Container(
-              width: 36,
-              height: 36,
+              width: 32,
+              height: 32,
               decoration: BoxDecoration(
                 color: color.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(icon, color: color, size: 20),
+              child: Icon(icon, color: color, size: 18),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             Expanded(
               child: Text(
                 label,
@@ -1016,7 +1019,7 @@ class _HomePageState extends State<HomePage> {
             if (onTap != null)
               Icon(
                 Icons.arrow_forward_ios,
-                size: 14,
+                size: 12,
                 color: cs.onSurfaceVariant,
               ),
           ],
@@ -1038,7 +1041,7 @@ class _HomePageState extends State<HomePage> {
       },
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
         decoration: BoxDecoration(
           color: tileBgColor,
           borderRadius: BorderRadius.circular(12),
@@ -1046,15 +1049,15 @@ class _HomePageState extends State<HomePage> {
         child: Row(
           children: [
             Container(
-              width: 36,
-              height: 36,
+              width: 32,
+              height: 32,
               decoration: BoxDecoration(
                 color: tileColor.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(Icons.north_rounded, color: tileColor, size: 20),
+              child: Icon(Icons.north_rounded, color: tileColor, size: 18),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             Expanded(
               child: Text(
                 '畅行嘉大',
@@ -1067,7 +1070,7 @@ class _HomePageState extends State<HomePage> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            Icon(Icons.arrow_forward_ios, size: 14, color: cs.onSurfaceVariant),
+            Icon(Icons.arrow_forward_ios, size: 12, color: cs.onSurfaceVariant),
           ],
         ),
       ),

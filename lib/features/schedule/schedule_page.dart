@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../app/theme.dart';
@@ -18,6 +19,8 @@ class SchedulePage extends StatefulWidget {
 }
 
 class _SchedulePageState extends State<SchedulePage> {
+  static const _weekCount = 20;
+
   bool _loggedIn = false;
   bool _loading = false;
   String? _error;
@@ -60,7 +63,7 @@ class _SchedulePageState extends State<SchedulePage> {
     final nextWeek = index + 1;
     if (nextWeek == _displayWeek) return;
     setState(() => _displayWeek = nextWeek);
-    _primeWeekViewModel(nextWeek);
+    _primeNearbyWeekViewModels(nextWeek);
   }
 
   void _restoreCachedSnapshot() {
@@ -90,12 +93,18 @@ class _SchedulePageState extends State<SchedulePage> {
     _courseChangeRules = snapshot.changeRules;
     _scheduleUpdatedAt = snapshot.lastUpdatedAt;
     _weekViewModels.clear();
-    _primeWeekViewModel(_displayWeek);
+    _primeNearbyWeekViewModels(_displayWeek);
   }
 
   void _primeWeekViewModel(int week) {
-    if (_courses.isEmpty) return;
+    if (_courses.isEmpty || week < 1 || week > _weekCount) return;
     _weekViewModels.putIfAbsent(week, () => _buildWeekViewModel(week));
+  }
+
+  void _primeNearbyWeekViewModels(int centerWeek) {
+    for (final week in [centerWeek - 1, centerWeek, centerWeek + 1]) {
+      _primeWeekViewModel(week);
+    }
   }
 
   ScheduleWeekViewModel _buildWeekViewModel(int week) {
@@ -106,15 +115,30 @@ class _SchedulePageState extends State<SchedulePage> {
           changeRules: _courseChangeRules,
         );
 
+    final currentWeekCoursesByDay = <int, List<CourseEntry>>{
+      for (int day = 1; day <= 7; day++) day: <CourseEntry>[],
+    };
+    for (final course in effectiveWeekCourses) {
+      currentWeekCoursesByDay[course.weekday]?.add(course);
+    }
+
+    final otherWeekCoursesByDay = <int, List<CourseEntry>>{
+      for (int day = 1; day <= 7; day++) day: <CourseEntry>[],
+    };
+    for (final course in _courses) {
+      if (course.isInWeek(week)) {
+        continue;
+      }
+      otherWeekCoursesByDay[course.weekday]?.add(course);
+    }
+
     final days = <int, ScheduleDayCourses>{};
     for (int day = 1; day <= 7; day++) {
       final dayCurrent = _ScheduleGrid.mergeAdjacentCourses(
-        effectiveWeekCourses.where((course) => course.weekday == day).toList(),
+        currentWeekCoursesByDay[day]!,
       );
       final dayOther = _ScheduleGrid.deduplicateBySlot(
-        _courses
-            .where((course) => course.weekday == day && !course.isInWeek(week))
-            .toList(),
+        otherWeekCoursesByDay[day]!,
         dayCurrent,
       );
       days[day] = ScheduleDayCourses(
@@ -272,10 +296,10 @@ class _SchedulePageState extends State<SchedulePage> {
   Widget _buildWeekPager() {
     return PageView.builder(
       controller: _weekPageController,
-      itemCount: 20,
+      itemCount: _weekCount,
       onPageChanged: _onWeekPageChanged,
-      allowImplicitScrolling: false,
-      physics: const BouncingScrollPhysics(),
+      allowImplicitScrolling: true,
+      dragStartBehavior: DragStartBehavior.down,
       itemBuilder: (context, index) {
         final week = index + 1;
         final weekViewModel = _weekViewModelFor(week);
@@ -771,14 +795,16 @@ class _DayColumn extends StatelessWidget {
     // Only if within 3 weeks of displayed week to avoid clutter
     if (otherEntries.isEmpty) return const [];
 
-    otherEntries.sort(
-      (a, b) => a.course
-          .weekDistanceTo(displayWeek)
-          .compareTo(b.course.weekDistanceTo(displayWeek)),
-    );
-
-    final closest = otherEntries.first;
-    if (closest.course.weekDistanceTo(displayWeek) > 3) return const [];
+    var closest = otherEntries.first;
+    var closestDistance = closest.course.weekDistanceTo(displayWeek);
+    for (final entry in otherEntries.skip(1)) {
+      final distance = entry.course.weekDistanceTo(displayWeek);
+      if (distance < closestDistance) {
+        closest = entry;
+        closestDistance = distance;
+      }
+    }
+    if (closestDistance > 3) return const [];
 
     return _buildStandardPlacements([closest], dayColumnWidth);
   }

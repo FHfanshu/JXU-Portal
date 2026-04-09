@@ -138,4 +138,33 @@ void main() {
 
     expect(find.text('图书馆页面'), findsOneWidget);
   });
+
+  testWidgets('second classroom tile navigates to dedicated entry', (
+    tester,
+  ) async {
+    final router = GoRouter(
+      routes: [
+        GoRoute(
+          path: '/',
+          name: 'home',
+          builder: (context, state) => const HomePage(),
+        ),
+        GoRoute(
+          path: '/second-classroom',
+          name: 'second-classroom',
+          builder: (context, state) => const Scaffold(body: Text('第二课堂页面')),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pump();
+
+    await tester.ensureVisible(find.text('第二课堂'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('第二课堂'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('第二课堂页面'), findsOneWidget);
+  });
 }
