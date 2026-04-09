@@ -146,6 +146,16 @@ class ZhengfangAuth extends ChangeNotifier {
   static const _webVpnLoginPath =
       '$_portalPrefix/jwglxt/xtgl/login_slogin.html';
   static const _directIndexPath = '/jwglxt/xtgl/index_initMenu.html';
+  static const _webVpnHostPrefixes = <String, String>{
+    'jwzx.zjxu.edu.cn':
+        '77726476706e69737468656265737421fae05b84692a62486b468ca88d1b203b',
+    'twdekt.zjxu.edu.cn':
+        '77726476706e69737468656265737421e4e045992c24264a74109ce29d51367bc8e6',
+    'libapp.zjxu.edu.cn':
+        '77726476706e69737468656265737421fcfe439d3720264a74109ce29d51367b2b47',
+    'zhx.zjxu.edu.cn':
+        '77726476706e69737468656265737421eaff59d23d3a7045300d8db9d6562d',
+  };
 
   /// WebVPN CAS 登录路径
   static const _webVpnCasPath = '/login';
@@ -214,6 +224,30 @@ class ZhengfangAuth extends ChangeNotifier {
               : uri.queryParameters,
         )
         .toString();
+  }
+
+  String buildWebVpnProxyUrl(String rawUrl) {
+    final url = rawUrl.trim();
+    if (url.isEmpty) return url;
+
+    final uri = Uri.tryParse(url);
+    if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
+      return url;
+    }
+    if (uri.host.toLowerCase() == 'webvpn.zjxu.edu.cn') {
+      return url;
+    }
+
+    final protocol = uri.scheme.toLowerCase();
+    final portSegment = uri.hasPort ? '-${uri.port}' : '';
+    final encryptedHost = _webVpnHostPrefixes[uri.host.toLowerCase()];
+    if (encryptedHost == null) {
+      return url;
+    }
+    final query = uri.hasQuery ? '?${uri.query}' : '';
+    final fragment = uri.hasFragment ? '#${uri.fragment}' : '';
+
+    return '$_webVpnBase/$protocol$portSegment/$encryptedHost${uri.path}$query$fragment';
   }
 
   // ── RSA encryption ──────────────────────────────────────────────────────────

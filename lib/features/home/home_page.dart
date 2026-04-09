@@ -244,7 +244,13 @@ class _HomePageState extends State<HomePage> {
   Future<void> _refreshDormElectricity() async {
     if (!_isBootstrapReady) return;
     final service = DormElectricityService.instance;
-    if (!await service.hasRoomConfig()) return;
+    if (!await service.hasRoomConfig()) {
+      if (!mounted) return;
+      setState(() {
+        _dormElectricity = '--';
+      });
+      return;
+    }
     final value = await service.fetchElectricity();
     if (!mounted) return;
     setState(() {
@@ -732,6 +738,12 @@ class _HomePageState extends State<HomePage> {
                                       ),
                                       maxLines: 1,
                                     ),
+                                    const SizedBox(width: 4),
+                                    Icon(
+                                      Icons.arrow_forward_ios,
+                                      size: 14,
+                                      color: cs.onSurfaceVariant,
+                                    ),
                                   ],
                                 ),
                               ),
@@ -742,14 +754,6 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
                 ],
-              ),
-            ),
-            Align(
-              alignment: Alignment.bottomRight,
-              child: Icon(
-                Icons.arrow_forward_ios,
-                size: 14,
-                color: cs.onSurfaceVariant,
               ),
             ),
           ],
@@ -764,7 +768,11 @@ class _HomePageState extends State<HomePage> {
     final bgColor = isDark ? cs.surfaceContainerLowest : Colors.white;
 
     return GestureDetector(
-      onTap: () => context.pushNamed('dorm-electricity'),
+      onTap: () async {
+        await context.pushNamed('dorm-electricity');
+        if (!mounted) return;
+        await _refreshDormElectricity();
+      },
       child: Container(
         height: 136,
         decoration: BoxDecoration(
@@ -818,19 +826,27 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    '剩余 $_dormElectricity 度',
-                    style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '剩余 $_dormElectricity 度',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                      Icon(
+                        Icons.arrow_forward_ios,
+                        size: 14,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ],
                   ),
                 ],
-              ),
-            ),
-            Align(
-              alignment: Alignment.bottomRight,
-              child: Icon(
-                Icons.arrow_forward_ios,
-                size: 14,
-                color: cs.onSurfaceVariant,
               ),
             ),
           ],
@@ -1189,18 +1205,22 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
             const SizedBox(height: 4),
-            Text(
-              '查看各科成绩与绩点',
-              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-            ),
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.bottomRight,
-              child: Icon(
-                Icons.arrow_forward_ios,
-                size: 14,
-                color: cs.onSurfaceVariant,
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: Text(
+                    '查看各科成绩与绩点',
+                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                  ),
+                ),
+                Icon(
+                  Icons.arrow_forward_ios,
+                  size: 14,
+                  color: cs.onSurfaceVariant,
+                ),
+              ],
             ),
           ],
         ),

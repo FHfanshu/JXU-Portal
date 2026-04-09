@@ -17,7 +17,9 @@ class CampusCardPage extends StatefulWidget {
 
 class _CampusCardPageState extends State<CampusCardPage> {
   static const _serviceHallHost = 'mobilehall.zjxu.edu.cn';
+  static const _webVpnHost = 'webvpn.zjxu.edu.cn';
   static const _statusPathKeyword = '/decision/view/form';
+  static const _statusViewletKeyword = 'ykt.frm';
 
   bool _capturedInCurrentDetailPage = false;
   bool _autoPopAfterCapture = false;
@@ -221,10 +223,7 @@ class _CampusCardPageState extends State<CampusCardPage> {
     final uri = Uri.tryParse(currentUrl);
     final path = uri?.path.toLowerCase();
     AppLogger.instance.debug('校园卡 onLoadStop: $currentUrl');
-    if (uri == null ||
-        uri.host.toLowerCase() != _serviceHallHost ||
-        path == null ||
-        !path.contains(_statusPathKeyword)) {
+    if (uri == null || !_isCampusCardStatusPage(uri)) {
       AppLogger.instance.debug('校园卡 跳过余额提取 (host=${uri?.host}, path=$path)');
       return;
     }
@@ -291,6 +290,18 @@ class _CampusCardPageState extends State<CampusCardPage> {
 
     return null;
   }
+
+  bool _isCampusCardStatusPage(Uri uri) {
+    final host = uri.host.toLowerCase();
+    final path = uri.path.toLowerCase();
+    final viewlet = uri.queryParameters['viewlet']?.toLowerCase() ?? '';
+
+    final isExpectedHost = host == _serviceHallHost || host == _webVpnHost;
+    if (!isExpectedHost) return false;
+
+    return path.contains(_statusPathKeyword) &&
+        viewlet.contains(_statusViewletKeyword);
+  }
 }
 
 // ── Campus Card Action ──────────────────────────────────────────────────────
@@ -319,36 +330,49 @@ class _CampusCardActionCard extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 46,
-                height: 46,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(icon, color: color, size: 24),
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(icon, color: color, size: 24),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: cs.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                  ),
+                ],
               ),
-              const SizedBox(height: 18),
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: cs.onSurface,
-                ),
+            ),
+            Positioned(
+              right: 12,
+              bottom: 12,
+              child: Icon(
+                Icons.arrow_forward_ios,
+                size: 14,
+                color: cs.onSurfaceVariant,
               ),
-              const SizedBox(height: 4),
-              Text(
-                subtitle,
-                style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

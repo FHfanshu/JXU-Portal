@@ -21,7 +21,7 @@ import '../features/changxing_jiada/changxing_jiada_page.dart';
 import '../features/changxing_jiada/changxing_leave_form_page.dart';
 import '../features/changxing_jiada/changxing_overtime_form_page.dart';
 import '../features/changxing_jiada/changxing_jiada_model.dart';
-import '../shared/widgets/unified_auth_protected_webview_page.dart';
+import '../shared/widgets/webvpn_protected_webview_page.dart';
 import '../shared/widgets/webview_page.dart';
 
 int? _parseOptionalId(GoRouterState state) {
@@ -87,12 +87,9 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/library',
       name: 'library',
-      builder: (context, state) => UnifiedAuthProtectedWebViewPage(
+      builder: (context, state) => WebVpnProtectedWebViewPage(
         title: '图书馆',
-        url: 'https://libapp.zjxu.edu.cn/#!/Content/Index/index',
-        serviceUrl:
-            'https://libapp.zjxu.edu.cn/Info/Thirdparty/ssoFromDingDing',
-        loginDescription: '统一认证登录后可直接进入图书馆',
+        url: 'https://libapp.zjxu.edu.cn/Info/Thirdparty/ssoFromDingDing',
         preferWebViewBackNavigation: true,
         onHomePressed: () => context.goNamed('home'),
       ),
@@ -100,11 +97,9 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/second-classroom',
       name: 'second-classroom',
-      builder: (context, state) => UnifiedAuthProtectedWebViewPage(
+      builder: (context, state) => WebVpnProtectedWebViewPage(
         title: '第二课堂',
         url: 'https://twdekt.zjxu.edu.cn/dekt/wx/index?_WXFTL=0',
-        serviceUrl: 'https://twdekt.zjxu.edu.cn/dekt/wx/index?_WXFTL=0',
-        loginDescription: '统一认证账号为校园一卡通号',
         preferWebViewBackNavigation: true,
         onHomePressed: () => context.goNamed('home'),
       ),

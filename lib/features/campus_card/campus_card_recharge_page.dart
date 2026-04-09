@@ -1,29 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/logging/app_logger.dart';
+import '../../core/wechat/wechat_launcher.dart';
 
 class CampusCardRechargePage extends StatefulWidget {
   const CampusCardRechargePage({super.key});
 
-  static const weChatOAuthAppId = 'wx73282a5b4a6708c1';
   static const xiaofubaoThirdAppId = 'wx8fddf03d92fd6fa9';
   static final rechargeHomeUri = Uri.parse(
     'https://webapp.xiaofubao.com/card/card_home.shtml?platform=WECHAT_H5&schoolCode=10354&thirdAppid=$xiaofubaoThirdAppId',
   );
-
-  static Uri buildWeChatBusinessWebViewUri(
-    String h5Url, {
-    required String appId,
-  }) {
-    return Uri(
-      scheme: 'weixin',
-      host: 'dl',
-      path: '/businessWebview/link/',
-      queryParameters: {'appid': appId, 'url': h5Url},
-    );
-  }
 
   @override
   State<CampusCardRechargePage> createState() => _CampusCardRechargePageState();
@@ -56,49 +43,22 @@ class _CampusCardRechargePageState extends State<CampusCardRechargePage> {
       _statusMessage = autoTriggered ? '正在拉起微信充值页...' : null;
     });
 
-    final launchCandidates = [
-      (
-        label: 'oauthAppId',
-        uri: CampusCardRechargePage.buildWeChatBusinessWebViewUri(
-          CampusCardRechargePage.rechargeHomeUri.toString(),
-          appId: CampusCardRechargePage.weChatOAuthAppId,
-        ),
-      ),
-      (
-        label: 'thirdAppId',
-        uri: CampusCardRechargePage.buildWeChatBusinessWebViewUri(
-          CampusCardRechargePage.rechargeHomeUri.toString(),
-          appId: CampusCardRechargePage.xiaofubaoThirdAppId,
-        ),
-      ),
-    ];
-
     try {
-      for (final candidate in launchCandidates) {
-        try {
-          AppLogger.instance.info(
-            '校园卡充值：尝试通过微信 businessWebview 打开晓付宝首页 (${candidate.label})',
-          );
-          final launched = await launchUrl(
-            candidate.uri,
-            mode: LaunchMode.externalApplication,
-          );
-          AppLogger.instance.info(
-            '校园卡充值：${candidate.label} launched=$launched',
-          );
-          if (!launched) continue;
+      AppLogger.instance.info('校园卡充值：尝试原生 Intent 打开微信 H5 充值页');
+      final launched = await WeChatLauncher.openUrlInWeChat(
+        CampusCardRechargePage.rechargeHomeUri.toString(),
+      );
+      AppLogger.instance.info('校园卡充值：native intent launched=$launched');
 
-          if (!mounted) return;
-          final navigator = Navigator.of(context);
-          final messenger = ScaffoldMessenger.maybeOf(context);
-          await navigator.maybePop();
-          messenger?.showSnackBar(
-            const SnackBar(content: Text('已跳转到微信，请在微信中完成充值')),
-          );
-          return;
-        } catch (error) {
-          AppLogger.instance.error('校园卡充值：${candidate.label} 拉起失败 :: $error');
-        }
+      if (launched) {
+        if (!mounted) return;
+        final navigator = Navigator.of(context);
+        final messenger = ScaffoldMessenger.maybeOf(context);
+        await navigator.maybePop();
+        messenger?.showSnackBar(
+          const SnackBar(content: Text('已跳转到微信，请在微信中完成充值')),
+        );
+        return;
       }
 
       if (!mounted) return;
@@ -142,7 +102,7 @@ class _CampusCardRechargePageState extends State<CampusCardRechargePage> {
                 Text('充值需要在微信中完成', style: textTheme.headlineSmall),
                 const SizedBox(height: 12),
                 Text(
-                  '应用会优先直接拉起微信，进入晓付宝校园卡充值页。若没有自动跳转，可手动重试或复制链接到微信中打开。',
+                  '应用会优先直接调用微信打开晓付宝校园卡充值页。若没有自动跳转，可手动重试或复制链接到微信中打开。',
                   style: textTheme.bodyMedium,
                 ),
                 if (_statusMessage != null) ...[

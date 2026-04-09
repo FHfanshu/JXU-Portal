@@ -78,16 +78,18 @@ class _DormElectricitySettingsPageState
     if (building == null || room == null) return;
 
     setState(() => _saving = true);
-    await _service.saveRoomConfig(DormRoomConfig(
-      communityId: building.communityId,
-      buildingId: building.buildingId,
-      floorId: room.floorId,
-      roomId: room.roomId,
-    ));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('寝室配置成功')),
+    await _service.saveRoomConfig(
+      DormRoomConfig(
+        communityId: building.communityId,
+        buildingId: building.buildingId,
+        floorId: room.floorId,
+        roomId: room.roomId,
+      ),
     );
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('寝室配置成功')));
     Navigator.of(context).pop();
   }
 
@@ -98,88 +100,96 @@ class _DormElectricitySettingsPageState
       body: _loadingBuildings
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(_error!, style: const TextStyle(color: Colors.red)),
-                      const SizedBox(height: 12),
-                      FilledButton(
-                        onPressed: () {
-                          setState(() {
-                            _error = null;
-                            _loadingBuildings = true;
-                          });
-                          _loadBuildings();
-                        },
-                        child: const Text('重试'),
-                      ),
-                    ],
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(_error!, style: const TextStyle(color: Colors.red)),
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    onPressed: () {
+                      setState(() {
+                        _error = null;
+                        _loadingBuildings = true;
+                      });
+                      _loadBuildings();
+                    },
+                    child: const Text('重试'),
                   ),
-                )
-              : Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      DropdownButtonFormField<DormBuilding>(
-                        decoration: const InputDecoration(
-                          labelText: '园区 / 楼幢',
-                          border: OutlineInputBorder(),
+                ],
+              ),
+            )
+          : Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  DropdownButtonFormField<DormBuilding>(
+                    decoration: const InputDecoration(
+                      labelText: '园区 / 楼幢',
+                      border: OutlineInputBorder(),
+                    ),
+                    initialValue: _selectedBuilding,
+                    isExpanded: true,
+                    items: _buildings.map((b) {
+                      return DropdownMenuItem(
+                        value: b,
+                        child: Text(
+                          '${b.communityName}  ${b.buildingName}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        initialValue: _selectedBuilding,
-                        items: _buildings.map((b) {
-                          return DropdownMenuItem(
-                            value: b,
-                            child: Text(
-                              '${b.communityName}  ${b.buildingName}',
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          );
-                        }).toList(),
-                        onChanged: _onBuildingChanged,
+                      );
+                    }).toList(),
+                    onChanged: _onBuildingChanged,
+                  ),
+                  const SizedBox(height: 20),
+                  if (_loadingRooms)
+                    const Center(child: CircularProgressIndicator())
+                  else
+                    DropdownButtonFormField<DormRoom>(
+                      decoration: const InputDecoration(
+                        labelText: '楼层 / 房间号',
+                        border: OutlineInputBorder(),
                       ),
-                      const SizedBox(height: 20),
-                      if (_loadingRooms)
-                        const Center(child: CircularProgressIndicator())
-                      else
-                        DropdownButtonFormField<DormRoom>(
-                          decoration: const InputDecoration(
-                            labelText: '楼层 / 房间号',
-                            border: OutlineInputBorder(),
+                      initialValue: _selectedRoom,
+                      isExpanded: true,
+                      items: _rooms.map((r) {
+                        return DropdownMenuItem(
+                          value: r,
+                          child: Text(
+                            '${r.floorName}  ${r.roomName}号',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          initialValue: _selectedRoom,
-                          items: _rooms.map((r) {
-                            return DropdownMenuItem(
-                              value: r,
-                              child: Text('${r.floorName}  ${r.roomName}号'),
-                            );
-                          }).toList(),
-                          onChanged: _rooms.isEmpty
-                              ? null
-                              : (r) => setState(() => _selectedRoom = r),
-                        ),
-                      const SizedBox(height: 32),
-                      FilledButton(
-                        onPressed: (_selectedBuilding != null &&
-                                _selectedRoom != null &&
-                                !_saving)
-                            ? _save
-                            : null,
-                        child: _saving
-                            ? const SizedBox(
-                                height: 18,
-                                width: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Text('保存'),
-                      ),
-                    ],
+                        );
+                      }).toList(),
+                      onChanged: _rooms.isEmpty
+                          ? null
+                          : (r) => setState(() => _selectedRoom = r),
+                    ),
+                  const SizedBox(height: 32),
+                  FilledButton(
+                    onPressed:
+                        (_selectedBuilding != null &&
+                            _selectedRoom != null &&
+                            !_saving)
+                        ? _save
+                        : null,
+                    child: _saving
+                        ? const SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text('保存'),
                   ),
-                ),
+                ],
+              ),
+            ),
     );
   }
 }

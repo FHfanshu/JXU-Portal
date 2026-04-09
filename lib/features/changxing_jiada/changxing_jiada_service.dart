@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../core/auth/unified_auth.dart';
+import '../../core/auth/zhengfang_auth.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/network/dio_client.dart';
 import 'changxing_jiada_model.dart';
@@ -76,19 +77,15 @@ class ChangxingJiadaService {
   /// 通过 CAS SSO 登录畅行嘉大。
   /// 前提：用户已通过 UnifiedAuthService 完成一卡通登录。
   Future<void> loginViaCas() async {
-    if (!UnifiedAuthService.instance.isLoggedIn) {
-      throw ChangxingCasLoginException('请先登录一卡通');
-    }
-
     await DioClient.instance.ensureInitialized();
     final dio = DioClient.instance.dio;
     AppLogger.instance.debug('畅行嘉大：开始 CAS SSO 登录...');
 
     try {
       // 1. 发起 CAS 登录，手动跟随重定向链以提取 tokenId
-      var nextUrl = _casLoginUrl;
+      var nextUrl = _buildWebVpnUrl(_casLoginUrl);
       String? tokenId;
-      var sawUnifiedAuthRelay = false;
+      var sawWebVpnRelay = false;
 
       for (var i = 0; i < 10; i++) {
         final response = await dio.get<String>(
@@ -116,9 +113,9 @@ class ChangxingJiadaService {
               break;
             }
           }
-          if (isUnifiedAuthLoginEntryUrl(resolvedLocation)) {
-            sawUnifiedAuthRelay = true;
-            AppLogger.instance.debug('畅行嘉大：进入 CAS 登录中转，继续跟随重定向');
+          if (_isWebVpnAuthEntryUrl(resolvedLocation)) {
+            sawWebVpnRelay = true;
+            AppLogger.instance.debug('畅行嘉大：进入 WebVPN 登录中转，继续跟随重定向');
           }
           nextUrl = resolvedLocation;
           continue;
@@ -132,10 +129,9 @@ class ChangxingJiadaService {
           AppLogger.instance.debug('畅行嘉大：从最终 URL 中提取到 tokenId');
         }
         if (tokenId == null &&
-            sawUnifiedAuthRelay &&
-            isUnifiedAuthLoginFormResponse(finalUri.toString(), body)) {
-          AppLogger.instance.info('畅行嘉大：CAS session 已失效，需要重新登录一卡通');
-          UnifiedAuthService.instance.markLoggedOut();
+            (sawWebVpnRelay ||
+                _isWebVpnAuthResponse(finalUri.toString(), body))) {
+          AppLogger.instance.info('畅行嘉大：WebVPN session 已失效，需要重新登录一卡通');
           throw ChangxingNeedUnifiedAuthException();
         }
         break;
@@ -148,7 +144,7 @@ class ChangxingJiadaService {
 
       // 2. 用 tokenId 换取 JWT token
       final tokenResp = await dio.get<Map<String, dynamic>>(
-        '$_baseUrl/getToken',
+        _buildWebVpnUrl('$_baseUrl/getToken'),
         queryParameters: {'tokenId': tokenId},
         options: Options(
           responseType: ResponseType.json,
@@ -305,7 +301,9 @@ class ChangxingJiadaService {
     });
 
     final response = await DioClient.instance.dio.postUri<Map<String, dynamic>>(
-      Uri.parse('https://zhx.zjxu.edu.cn/api/image/add/single'),
+      Uri.parse(
+        _buildWebVpnUrl('https://zhx.zjxu.edu.cn/api/image/add/single'),
+      ),
       data: formData,
       options: Options(
         headers: {'token': token},
@@ -604,7 +602,11 @@ class ChangxingJiadaService {
       throw ChangxingAuthExpiredException();
     }
 
-    final uri = Uri.parse('$_baseUrl$path').replace(queryParameters: query);
+    final uri = Uri.parse(
+      _buildWebVpnUrl(
+        Uri.parse('$_baseUrl$path').replace(queryParameters: query).toString(),
+      ),
+    );
     final headers = <String, String>{};
     if (requiresToken) {
       headers['token'] = token;
@@ -669,6 +671,36 @@ class ChangxingJiadaService {
       return Uri.parse(baseUrl).resolve(location).toString();
     }
     return location;
+  }
+
+  String _buildWebVpnUrl(String url) {
+    return ZhengfangAuth.instance.buildWebVpnProxyUrl(url);
+  }
+
+  bool _isWebVpnAuthEntryUrl(String url) {
+    if (isZhengfangGatewayLoginUrl(url)) return true;
+
+    final uri = Uri.tryParse(url);
+    if (uri == null || uri.host.toLowerCase() != 'webvpn.zjxu.edu.cn') {
+      return false;
+    }
+
+    return uri.path.toLowerCase().contains('/cas/login');
+  }
+
+  bool _isWebVpnAuthResponse(String url, String html) {
+    if (_isWebVpnAuthEntryUrl(url)) return true;
+
+    final uri = Uri.tryParse(url);
+    if (uri == null || uri.host.toLowerCase() != 'webvpn.zjxu.edu.cn') {
+      return false;
+    }
+
+    if (uri.path == '/' || uri.path.toLowerCase() == '/m/portal') {
+      return true;
+    }
+
+    return looksLikeUnifiedAuthLoginHtml(html);
   }
 
   @visibleForTesting

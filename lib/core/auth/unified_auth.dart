@@ -46,8 +46,7 @@ bool isUnifiedAuthAuthenticatedUrl(String currentUrl) {
   }
   return host == 'mobilehall.zjxu.edu.cn' ||
       host == 'app.xiaoyuan.ccb.com' ||
-      host == 'libapp.zjxu.edu.cn' ||
-      host == 'twdekt.zjxu.edu.cn';
+      host == 'libapp.zjxu.edu.cn';
 }
 
 String? extractUnifiedAuthServiceUrl(String currentUrl) {
@@ -118,7 +117,8 @@ class UnifiedAuthService extends ChangeNotifier {
   static const _newcaOrigin = 'https://newca.zjxu.edu.cn';
   static const _serviceHallOrigin = 'https://mobilehall.zjxu.edu.cn';
   static const _paymentOrigin = 'https://app.xiaoyuan.ccb.com';
-  static const _secondClassroomOrigin = 'https://twdekt.zjxu.edu.cn';
+  static const _libraryOrigin = 'https://libapp.zjxu.edu.cn';
+  static const _webVpnOrigin = 'https://webvpn.zjxu.edu.cn';
   static const _aesKey = 'key_value_123456';
   static const _aesIv = '0987654321123456';
   static const _requestTimeout = Duration(seconds: 12);
@@ -186,6 +186,14 @@ class UnifiedAuthService extends ChangeNotifier {
         AppLogger.instance.info('统一认证会话已失效，标记登出');
         markLoggedOut();
         return false;
+      }
+
+      if (location.isNotEmpty) {
+        try {
+          await _followRedirectChain(loginUri, location);
+        } catch (error) {
+          AppLogger.instance.debug('统一认证服务会话预热失败: $serviceUrl :: $error');
+        }
       }
 
       final wasSessionActive = _sessionActive;
@@ -401,7 +409,8 @@ class UnifiedAuthService extends ChangeNotifier {
       Uri.parse('$_newcaOrigin/cas/login'),
       Uri.parse('$_serviceHallOrigin/webroot/decision/view/form'),
       Uri.parse(_paymentOrigin),
-      Uri.parse('$_secondClassroomOrigin/dekt/wx/index'),
+      Uri.parse('$_libraryOrigin/Info/Thirdparty/ssoFromDingDing'),
+      Uri.parse(_webVpnOrigin),
     ];
 
     for (final uri in uris) {

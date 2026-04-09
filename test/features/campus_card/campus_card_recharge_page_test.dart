@@ -8,22 +8,4 @@ void main() {
       'https://webapp.xiaofubao.com/card/card_home.shtml?platform=WECHAT_H5&schoolCode=10354&thirdAppid=wx8fddf03d92fd6fa9',
     );
   });
-
-  group('CampusCardRechargePage.buildWeChatBusinessWebViewUri', () {
-    test('wraps h5 url into wechat business webview scheme', () {
-      final uri = CampusCardRechargePage.buildWeChatBusinessWebViewUri(
-        CampusCardRechargePage.rechargeHomeUri.toString(),
-        appId: CampusCardRechargePage.weChatOAuthAppId,
-      );
-
-      expect(uri.scheme, 'weixin');
-      expect(uri.host, 'dl');
-      expect(uri.path, '/businessWebview/link/');
-      expect(uri.queryParameters['appid'], 'wx73282a5b4a6708c1');
-      expect(
-        uri.queryParameters['url'],
-        'https://webapp.xiaofubao.com/card/card_home.shtml?platform=WECHAT_H5&schoolCode=10354&thirdAppid=wx8fddf03d92fd6fa9',
-      );
-    });
-  });
 }

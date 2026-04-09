@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/auth/unified_auth.dart';
-import '../../shared/widgets/unified_auth_login_widget.dart';
+import '../../shared/widgets/webvpn_cas_login_widget.dart';
 import 'changxing_jiada_model.dart';
 import 'changxing_jiada_service.dart';
 
@@ -27,8 +26,8 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
 
   bool get _loggedIn => _service.hasToken && _profile != null;
 
-  /// 是否需要先登录一卡通（CAS 未登录时显示一卡通登录表单）
-  bool _needUnifiedAuth = false;
+  /// 是否需要先登录一卡通 WebVPN（CAS 未登录时显示一卡通登录表单）
+  bool _needWebVpnAuth = false;
 
   @override
   void initState() {
@@ -92,17 +91,11 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
       _applications = [];
       _unreadCount = 0;
       _error = null;
-      _needUnifiedAuth = false;
+      _needWebVpnAuth = false;
     });
   }
 
   Future<void> _loginViaCas() async {
-    // 检查一卡通是否已登录
-    if (!UnifiedAuthService.instance.isLoggedIn) {
-      setState(() => _needUnifiedAuth = true);
-      return;
-    }
-
     setState(() {
       _loggingIn = true;
       _error = null;
@@ -111,11 +104,11 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
     try {
       await _service.loginViaCas();
       if (!mounted) return;
+      setState(() => _needWebVpnAuth = false);
       await _loadDashboard(showGlobalLoading: false);
     } on ChangxingNeedUnifiedAuthException {
-      // CAS session 失效，需要重新登录一卡通
       if (!mounted) return;
-      setState(() => _needUnifiedAuth = true);
+      setState(() => _needWebVpnAuth = true);
     } on ChangxingCasLoginException catch (e) {
       if (!mounted) return;
       setState(() => _error = e.message);
@@ -129,8 +122,8 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
     }
   }
 
-  void _onUnifiedAuthSuccess() {
-    setState(() => _needUnifiedAuth = false);
+  void _onWebVpnAuthSuccess() {
+    setState(() => _needWebVpnAuth = false);
     // 一卡通登录成功后，自动进行 CAS SSO
     _loginViaCas();
   }
@@ -164,12 +157,11 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
   }
 
   Widget _buildLoginBody() {
-    // 如果需要先登录一卡通，显示一卡通登录表单
-    if (_needUnifiedAuth) {
-      return UnifiedAuthLoginWidget(
+    if (_needWebVpnAuth) {
+      return WebVpnCasLoginWidget(
         title: '登录一卡通',
         description: '畅行嘉大需要先登录一卡通账号',
-        onLoginSuccess: _onUnifiedAuthSuccess,
+        onLoginSuccess: _onWebVpnAuthSuccess,
       );
     }
 

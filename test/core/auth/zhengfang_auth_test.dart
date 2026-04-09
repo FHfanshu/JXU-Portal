@@ -41,6 +41,21 @@ void main() {
         ZhengfangAuth.instance.academicServiceUrl,
       );
     });
+
+    test('builds generic webvpn proxy urls for external services', () {
+      expect(
+        ZhengfangAuth.instance.buildWebVpnProxyUrl(
+          'https://twdekt.zjxu.edu.cn/dekt/wx/index?_WXFTL=0',
+        ),
+        'https://webvpn.zjxu.edu.cn/https/77726476706e69737468656265737421e4e045992c24264a74109ce29d51367bc8e6/dekt/wx/index?_WXFTL=0',
+      );
+      expect(
+        ZhengfangAuth.instance.buildWebVpnProxyUrl(
+          'https://libapp.zjxu.edu.cn/Info/Thirdparty/ssoFromDingDing',
+        ),
+        'https://webvpn.zjxu.edu.cn/https/77726476706e69737468656265737421fcfe439d3720264a74109ce29d51367b2b47/Info/Thirdparty/ssoFromDingDing',
+      );
+    });
   });
 
   group('zhengfang auth url classifiers', () {
