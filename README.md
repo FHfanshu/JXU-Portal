@@ -1,40 +1,63 @@
 # JXU-Portal
 
-[![Flutter](https://img.shields.io/badge/Flutter-3.41.6-blue.svg)](https://flutter.dev)
-[![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+嘉兴大学校园门户开源版。
 
-嘉兴大学校园门户开源版，提供课表、成绩、校园卡、服务大厅等校园服务入口。
+一个把课表、成绩、校园卡、服务大厅放到同一个 App 里的 Flutter 项目。
 
-## 开发环境
+## Quick Start
+
+### 1. 准备环境
 
 - Flutter 3.41.6
 - Dart 3.11.4
 - Java 17
+- Android Studio / Android SDK
 
-## 本地运行
+### 2. 获取代码
+
+```bash
+git clone https://github.com/FHfanshu/JXU-Portal.git
+cd JXU-Portal
+```
+
+### 3. 安装依赖
 
 ```bash
 flutter pub get
+```
+
+### 4. 运行 App
+
+```bash
 flutter run
 ```
 
-## 构建 Release APK
+## Build APK
 
 ```bash
 flutter build apk --release
 ```
 
-## 自动化流程
+构建产物默认在 `build/app/outputs/flutter-apk/app-release.apk`。
 
-- `sync-from-private.yml`: 定时或手动从私有源仓库同步 `lib/`、`assets/`、`test/`、`pubspec.*`、`analysis_options.yaml`
-- `android-ci.yml`: 在 push / pull request 时执行 `flutter analyze`、`flutter test` 并构建 release APK artifact
-- `release.yml`: 在推送 `v*` 标签时构建并发布 release APK
+## 项目结构
 
-## 同步边界
+```text
+lib/
+  app/         # 应用入口、主题、路由
+  core/        # 认证、网络、日志、学期能力
+  features/    # 业务模块
+  shared/      # 共享组件
+assets/        # 静态资源
+test/          # 测试
+android/       # Android 工程脚手架
+```
 
-- Android 等 Flutter 脚手架文件由本公开仓库自行维护，不会被同步流程覆盖
-- 业务 Dart 代码与相关资源文件从私有源仓库拉取
+## 说明
 
-## 免责声明
+- 本项目为个人开发项目，非学校官方应用
+- 项目仅供学习与交流使用
 
-本项目为嘉兴大学学生个人开发项目，非学校官方应用。仅供学习交流使用。
+## Contributor
+
+- `3357264605@qq.com`
