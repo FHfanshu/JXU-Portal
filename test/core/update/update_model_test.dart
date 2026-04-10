@@ -25,6 +25,36 @@ void main() {
     expect(release.launchUrl, endsWith('.apk'));
   });
 
+  test('parses gitee release payload and falls back to tag page', () {
+    final release = AppRelease.fromGiteeJson(
+      {
+        'tag_name': 'v0.2.0',
+        'body': '镜像更新内容',
+        'created_at': '2026-04-10T23:30:00+08:00',
+        'assets': [
+          {
+            'name': 'JXU-Portal-v0.2.0.apk',
+            'browser_download_url':
+                'https://gitee.com/fhfanshu/JXU-Portal/releases/download/v0.2.0/JXU-Portal-v0.2.0.apk',
+          },
+        ],
+      },
+      owner: 'fhfanshu',
+      repo: 'JXU-Portal',
+    );
+
+    expect(release.version, '0.2.0');
+    expect(release.changelog, '镜像更新内容');
+    expect(
+      release.releaseUrl,
+      'https://gitee.com/fhfanshu/JXU-Portal/releases/tag/v0.2.0',
+    );
+    expect(
+      release.downloadUrl,
+      'https://gitee.com/fhfanshu/JXU-Portal/releases/download/v0.2.0/JXU-Portal-v0.2.0.apk',
+    );
+  });
+
   test('treats larger semantic version as newer', () {
     final release = AppRelease(
       version: '0.1.3',

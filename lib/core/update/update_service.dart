@@ -11,7 +11,9 @@ class UpdateService {
 
   static final UpdateService instance = UpdateService._();
 
-  static const latestReleaseUrl =
+  static const giteeLatestReleaseUrl =
+      'https://gitee.com/api/v5/repos/fhfanshu/JXU-Portal/releases/latest';
+  static const githubLatestReleaseUrl =
       'https://api.github.com/repos/FHfanshu/JXU-Portal/releases/latest';
 
   Dio? _dio;
@@ -31,8 +33,44 @@ class UpdateService {
       return debugProvider();
     }
 
+    try {
+      return await _fetchLatestGiteeRelease();
+    } catch (error) {
+      AppLogger.instance.info('Gitee 更新检查失败，回退 GitHub: $error');
+    }
+
+    return _fetchLatestGitHubRelease();
+  }
+
+  Future<AppRelease> _fetchLatestGiteeRelease() async {
+    final debugProvider = debugGiteeReleaseProvider;
+    if (debugProvider != null) {
+      return debugProvider();
+    }
+
     final dio = _dio ??= _createDio();
-    final response = await dio.get<Map<String, dynamic>>(latestReleaseUrl);
+    final response = await dio.get<Map<String, dynamic>>(giteeLatestReleaseUrl);
+    final data = response.data;
+    if (data == null) {
+      throw const FormatException('Gitee release 响应为空。');
+    }
+    return AppRelease.fromGiteeJson(
+      data,
+      owner: 'fhfanshu',
+      repo: 'JXU-Portal',
+    );
+  }
+
+  Future<AppRelease> _fetchLatestGitHubRelease() async {
+    final debugProvider = debugGitHubReleaseProvider;
+    if (debugProvider != null) {
+      return debugProvider();
+    }
+
+    final dio = _dio ??= _createDio();
+    final response = await dio.get<Map<String, dynamic>>(
+      githubLatestReleaseUrl,
+    );
     final data = response.data;
     if (data == null) {
       throw const FormatException('GitHub release 响应为空。');
@@ -55,7 +93,7 @@ class UpdateService {
         connectTimeout: const Duration(seconds: 15),
         receiveTimeout: const Duration(seconds: 15),
         headers: const {
-          'Accept': 'application/vnd.github+json',
+          'Accept': 'application/json',
           'User-Agent': 'JXU-Portal-App',
         },
       ),
@@ -85,12 +123,20 @@ class UpdateService {
   Future<AppRelease> Function()? debugReleaseProvider;
 
   @visibleForTesting
+  Future<AppRelease> Function()? debugGiteeReleaseProvider;
+
+  @visibleForTesting
+  Future<AppRelease> Function()? debugGitHubReleaseProvider;
+
+  @visibleForTesting
   Future<String> Function()? debugCurrentVersionProvider;
 
   @visibleForTesting
   void debugReset() {
     _dio = null;
     debugReleaseProvider = null;
+    debugGiteeReleaseProvider = null;
+    debugGitHubReleaseProvider = null;
     debugCurrentVersionProvider = null;
   }
 }

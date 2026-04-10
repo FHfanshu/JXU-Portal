@@ -52,4 +52,44 @@ void main() {
 
     expect(UpdateService.instance.checkForUpdate(), throwsStateError);
   });
+
+  test('prefers gitee release when mirror is available', () async {
+    final giteeRelease = AppRelease(
+      version: '0.1.4',
+      changelog: '',
+      downloadUrl: 'https://gitee.com/example.apk',
+      releaseUrl: 'https://gitee.com/example',
+      publishedAt: DateTime(2026),
+    );
+    var githubRequested = false;
+    UpdateService.instance.debugGiteeReleaseProvider = () async => giteeRelease;
+    UpdateService.instance.debugGitHubReleaseProvider = () async {
+      githubRequested = true;
+      return giteeRelease;
+    };
+
+    final result = await UpdateService.instance.fetchLatestRelease();
+
+    expect(result, same(giteeRelease));
+    expect(githubRequested, isFalse);
+  });
+
+  test('falls back to github when gitee mirror fails', () async {
+    final githubRelease = AppRelease(
+      version: '0.2.0',
+      changelog: '',
+      downloadUrl: 'https://github.com/example.apk',
+      releaseUrl: 'https://github.com/example',
+      publishedAt: DateTime(2026),
+    );
+    UpdateService.instance.debugGiteeReleaseProvider = () async {
+      throw StateError('gitee failed');
+    };
+    UpdateService.instance.debugGitHubReleaseProvider = () async =>
+        githubRelease;
+
+    final result = await UpdateService.instance.fetchLatestRelease();
+
+    expect(result, same(githubRelease));
+  });
 }
