@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutId="campus_card_payment"
+        android:shortcutLongLabel="@string/shortcut_campus_card_payment_long_label"
+        android:shortcutShortLabel="@string/shortcut_campus_card_payment_short_label">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="jiaxinguniversityportal://shortcut/campus-card-payment"
+            android:targetClass="edu.zjxu.jiaxinguniversityportal.MainActivity"
+            android:targetPackage="edu.zjxu.jiaxinguniversityportal" />
+    </shortcut>
+</shortcuts>

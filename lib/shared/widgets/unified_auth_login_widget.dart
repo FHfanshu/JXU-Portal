@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../../core/auth/credential_store.dart';
 import '../../core/auth/unified_auth.dart';
 import '../../core/auth/zhengfang_auth.dart';
+import '../../core/logging/app_logger.dart';
 
 enum UnifiedAuthMode { direct, webVpn }
 
@@ -182,6 +183,11 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
         _captchaBytes = bytes;
         _error = null;
       });
+    } on WebVpnAlreadyAuthenticatedException {
+      if (!mounted) return;
+      AppLogger.instance.info('WebVPN 已认证，跳过登录');
+      widget.onLoginSuccess();
+      return;
     } on UnifiedAuthCaptchaException catch (error) {
       if (!mounted) return;
       setState(() {

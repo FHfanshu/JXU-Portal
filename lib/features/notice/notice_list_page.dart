@@ -57,7 +57,7 @@ class _NoticeListPageState extends State<NoticeListPage> {
     if (_loadingMore) return;
     setState(() => _loadingMore = true);
     _currentPage++;
-    final more = await NoticeService.instance.fetchMoreNews(_currentPage);
+    final more = await NoticeService.instance.fetchMoreNotices(_currentPage);
     if (!mounted) return;
     setState(() {
       if (more.isEmpty) {
@@ -74,7 +74,7 @@ class _NoticeListPageState extends State<NoticeListPage> {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('校园资讯'),
+        title: const Text('通知公告'),
         actions: [
           IconButton(icon: const Icon(Icons.refresh), onPressed: _loadNotices),
         ],
@@ -93,7 +93,7 @@ class _NoticeListPageState extends State<NoticeListPage> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    '暂无资讯',
+                    '暂无通知',
                     style: TextStyle(fontSize: 16, color: Colors.grey[500]),
                   ),
                 ],
@@ -153,8 +153,8 @@ class _NoticeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isTeaching = notice.category == '教学';
-    final tagColor = isTeaching ? Colors.red : const Color(0xFF1565C0);
+    final isNotice = notice.category == '通知公告';
+    final tagColor = isNotice ? const Color(0xFF1565C0) : Colors.red;
     final publishDate = (notice.date ?? '').trim();
 
     return Material(

@@ -1062,6 +1062,16 @@ class _HomePageState extends State<HomePage> {
               ),
               const SizedBox(height: 8),
               _buildChangxingJiadaTile(context),
+              const SizedBox(height: 8),
+              _buildLearningServiceItem(
+                context,
+                Icons.science_outlined,
+                '实践通知',
+                const Color(0xFF1976D2),
+                onTap: () {
+                  context.pushNamed('sjjx-notice-list');
+                },
+              ),
             ],
           ),
         ],

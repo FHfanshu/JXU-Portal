@@ -12,6 +12,7 @@ import '../features/grades/grades_page.dart';
 import '../features/campus_card/campus_card_page.dart';
 import '../features/campus_card/campus_card_payment_page.dart';
 import '../features/notice/notice_list_page.dart';
+import '../features/sjjx_notice/sjjx_notice_list_page.dart';
 import '../features/service_hall/service_hall_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/dorm_electricity/dorm_electricity_page.dart';
@@ -128,6 +129,11 @@ final GoRouter appRouter = GoRouter(
       path: '/notice-list',
       name: 'notice-list',
       builder: (context, state) => const NoticeListPage(),
+    ),
+    GoRoute(
+      path: '/sjjx-notice-list',
+      name: 'sjjx-notice-list',
+      builder: (context, state) => const SjjxNoticeListPage(),
     ),
     GoRoute(
       path: '/news-detail',

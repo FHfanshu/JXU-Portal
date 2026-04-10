@@ -44,18 +44,30 @@ class _UnifiedAuthProtectedWebViewPageState
     extends State<UnifiedAuthProtectedWebViewPage> {
   late bool _authenticated;
   late bool _authResolved;
+  late String _webViewUrl;
   bool _resyncing = false;
   bool _loginPromptShown = false;
   bool _loginPromptInFlight = false;
+  Key _webViewKey = UniqueKey();
 
   @override
   void initState() {
     super.initState();
+    _webViewUrl = widget.url;
     _authenticated = UnifiedAuthService.instance.isLoggedIn;
     _authResolved = !_authenticated;
     if (!_authResolved) {
       _resolveInitialAuthentication();
     }
+  }
+
+  @override
+  void didUpdateWidget(covariant UnifiedAuthProtectedWebViewPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.url == widget.url) return;
+
+    _webViewUrl = widget.url;
+    _webViewKey = UniqueKey();
   }
 
   void _onLoginSuccess() {
@@ -131,11 +143,18 @@ class _UnifiedAuthProtectedWebViewPageState
       // 第一次：重新同步 cookie 后重新加载
       _resyncing = true;
       await UnifiedAuthService.instance.syncCookiesToWebView();
+      if (!mounted) return;
+
       final retryUrl =
           extractUnifiedAuthServiceUrl(currentUrl) ??
           (currentUrl.trim().isNotEmpty ? currentUrl : widget.url);
       AppLogger.instance.debug('Cookie 重同步完成，重新加载 WebView: $retryUrl');
-      await controller.loadUrl(urlRequest: URLRequest(url: WebUri(retryUrl)));
+      // 通过快捷方式快速进入时，这里的旧 controller 偶发会失效。
+      // 直接重建 WebView 比继续调用旧实例更稳定。
+      setState(() {
+        _webViewUrl = retryUrl;
+        _webViewKey = UniqueKey();
+      });
       return;
     }
 
@@ -189,8 +208,9 @@ class _UnifiedAuthProtectedWebViewPageState
 
     if (_authenticated) {
       return WebViewPage(
+        key: _webViewKey,
         title: widget.title,
-        url: widget.url,
+        url: _webViewUrl,
         onLoadStop: _handleLoadStop,
         onNavigationRequest: widget.onNavigationRequest,
         emulateDingTalkEnvironment: widget.emulateDingTalkEnvironment,

@@ -110,7 +110,28 @@ class _WebVpnProtectedWebViewPageState
     InAppWebViewController controller,
     String currentUrl,
   ) async {
+    if (isZhengfangGatewayLoginUrl(currentUrl)) {
+      AppLogger.instance.debug('WebVPN WebView 命中网关登录页，切换为应用内登录');
+      if (mounted) {
+        setState(() => _requiresLogin = true);
+      }
+      await _presentLoginPrompt(force: true);
+      return;
+    }
+
     if (isZhengfangLoginEntryUrl(currentUrl)) {
+      // CAS 登录页带 service 参数：如果 WebVPN 已认证，CAS SSO 会自动完成
+      // 重定向回目标页面，不需要手动登录
+      final uri = Uri.tryParse(currentUrl);
+      final hasServiceParam =
+          uri?.queryParameters.containsKey('service') ?? false;
+      if (hasServiceParam && ZhengfangAuth.instance.isLoggedIn) {
+        AppLogger.instance.debug(
+          'WebVPN WebView 命中 CAS 登录页但有 service 参数且已认证，等待 SSO 自动重定向',
+        );
+        return;
+      }
+
       AppLogger.instance.debug('WebVPN WebView 命中登录页，切换为应用内登录');
       if (mounted) {
         setState(() => _requiresLogin = true);

@@ -1,135 +1,125 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:html/parser.dart' as html_parser;
 
-import '../../core/network/dio_client.dart';
 import '../../core/network/network_settings.dart';
 import '../../core/network/proxy_mode.dart';
 import 'notice_model.dart';
+
+const _jwcNoticeBaseUrl = 'https://jwc.zjxu.edu.cn/';
+const _jwcNoticeListUrl = 'https://jwc.zjxu.edu.cn/list.jsp';
+
+@visibleForTesting
+List<Notice> parseJwcNoticeListHtml(String html) {
+  final doc = html_parser.parse(html);
+  final listItems = doc.querySelectorAll('#ul1 > li');
+  final notices = <Notice>[];
+
+  for (final item in listItems) {
+    final link = item.querySelector('a.a1') ?? item.querySelector('a');
+    if (link == null) continue;
+
+    final title = link.text.trim();
+    final href = link.attributes['href']?.trim() ?? '';
+    if (title.isEmpty || href.isEmpty) continue;
+
+    final dateText = item.querySelector('span.fr')?.text.trim() ?? item.text;
+    final dateMatch = RegExp(
+      r'20\d{2}[-./]\d{1,2}[-./]\d{1,2}',
+    ).firstMatch(dateText);
+    final date = dateMatch?.group(0)?.replaceAll('/', '-').replaceAll('.', '-');
+
+    notices.add(
+      Notice(
+        title: title,
+        url: Uri.parse(_jwcNoticeBaseUrl).resolve(href).toString(),
+        category: '通知公告',
+        date: date,
+      ),
+    );
+  }
+
+  return notices;
+}
+
+int? _extractJwcNoticeTotalPages(String html) {
+  final doc = html_parser.parse(html);
+  final pagerText = doc.querySelector('.pb_sys_common')?.text ?? '';
+  final ratioMatch = RegExp(r'\b\d+\s*/\s*(\d+)\b').firstMatch(pagerText);
+  if (ratioMatch != null) {
+    return int.tryParse(ratioMatch.group(1) ?? '');
+  }
+
+  final lastPageHref = doc.querySelector('.p_last a')?.attributes['href'] ?? '';
+  final pageMatch = RegExp(r'[?&]PAGENUM=(\d+)').firstMatch(lastPageHref);
+  return int.tryParse(pageMatch?.group(1) ?? '');
+}
 
 class NoticeService {
   NoticeService._();
   static final NoticeService instance = NoticeService._();
 
   List<Notice>? _cachedNotices;
+  int? _cachedTotalPages;
 
-  /// Total pages on the news site (descending numbering).
-  static const _totalPages = 233;
-
-  /// 缓存的新闻 Dio 实例（避免每次创建新实例）
-  Dio? _newsDio;
+  Dio? _noticeDio;
 
   List<Notice>? get cachedNotices => _cachedNotices;
 
-  /// 获取通知列表（调课信息 + 第一页综合新闻）— used by home page ticker
   Future<List<Notice>> fetchNotices() async {
     try {
-      final notices = <Notice>[];
-
-      final classAdjustments = await _fetchClassAdjustments();
-      notices.addAll(classAdjustments);
-
-      final news = await _fetchNewsPage(1);
-      notices.addAll(news);
-
+      _cachedTotalPages = null;
+      final notices = await _fetchNoticePage(1);
       _cachedNotices = notices;
       return notices;
-    } catch (e) {
+    } catch (_) {
       return _cachedNotices ?? [];
     }
   }
 
-  /// 获取更多新闻（分页）— used by notice list page infinite scroll
-  Future<List<Notice>> fetchMoreNews(int page) async {
-    if (page < 1 || page > _totalPages) return [];
+  Future<List<Notice>> fetchMoreNotices(int page) async {
+    if (page < 1) return [];
+    final totalPages = _cachedTotalPages;
+    if (totalPages != null && page > totalPages) return [];
+
     try {
-      return await _fetchNewsPage(page);
-    } catch (e) {
+      return await _fetchNoticePage(page);
+    } catch (_) {
       return [];
     }
   }
 
-  Future<List<Notice>> _fetchClassAdjustments() async {
-    try {
-      await DioClient.instance.ensureInitialized();
-      final resp = await DioClient.instance.dio.post<Map<String, dynamic>>(
-        '/xtgl/index_cxDbsy.html',
-        queryParameters: {'flag': '1'},
-      );
-      final items = resp.data?['items'] as List<dynamic>? ?? [];
-      return items
-          .cast<Map<String, dynamic>>()
-          .map(Notice.fromClassAdjustment)
-          .take(3)
-          .toList();
-    } catch (e) {
-      return [];
-    }
-  }
-
-  Future<List<Notice>> _fetchNewsPage(int page) async {
-    final url = page == 1
-        ? 'https://news.zjxu.edu.cn/zhxw.htm'
-        : 'https://news.zjxu.edu.cn/zhxw/${_totalPages - page + 1}.htm';
-
-    final resp = await (await _ensureNewsDio()).get<List<int>>(url);
-    if (resp.data == null) return [];
+  Future<List<Notice>> _fetchNoticePage(int page) async {
+    final url = _buildNoticePageUrl(page);
+    final resp = await (await _ensureNoticeDio()).get<List<int>>(url);
+    if (resp.data == null || resp.data!.isEmpty) return [];
 
     final html = utf8.decode(resp.data!, allowMalformed: true);
-    final doc = html_parser.parse(html);
-
-    final listItems = doc.querySelectorAll('ul li');
-    final notices = <Notice>[];
-    for (final li in listItems) {
-      final a = li.querySelector('a');
-      if (a == null) continue;
-
-      final title = a.text.trim();
-      final href = a.attributes['href'] ?? '';
-      if (title.isEmpty || href.isEmpty) continue;
-      if (!href.endsWith('.htm') || !href.contains('info/')) continue;
-
-      final date = _extractNewsDate(li);
-
-      final fullUrl = href.startsWith('http')
-          ? href
-          : 'https://news.zjxu.edu.cn/$href';
-      notices.add(
-        Notice(title: title, url: fullUrl, category: '新闻', date: date),
-      );
-    }
-    return notices;
+    _cachedTotalPages ??= _extractJwcNoticeTotalPages(html);
+    return parseJwcNoticeListHtml(html);
   }
 
-  String? _extractNewsDate(dynamic listItem) {
-    final dateCandidates = [
-      listItem.querySelector('.sp-list-time')?.text,
-      listItem.querySelector('time')?.text,
-      listItem.querySelector('p')?.text,
-      listItem.querySelector('span')?.text,
-    ];
-
-    for (final candidate in dateCandidates) {
-      final raw = (candidate ?? '').trim();
-      if (raw.isEmpty) continue;
-
-      final match = RegExp(r'20\d{2}[-./]\d{1,2}[-./]\d{1,2}').firstMatch(raw);
-      if (match == null) continue;
-
-      return match.group(0)!.replaceAll('/', '-').replaceAll('.', '-');
+  String _buildNoticePageUrl(int page) {
+    final queryParameters = <String, String>{
+      'urltype': 'tree.TreeTempUrl',
+      'wbtreeid': '1046',
+    };
+    if (page > 1) {
+      final totalPages = _cachedTotalPages;
+      if (totalPages != null && totalPages > 0) {
+        queryParameters['totalpage'] = '$totalPages';
+      }
+      queryParameters['PAGENUM'] = '$page';
     }
 
-    final allText = listItem.text?.toString() ?? '';
-    final fallback = RegExp(
-      r'20\d{2}[-./]\d{1,2}[-./]\d{1,2}',
-    ).firstMatch(allText);
-    if (fallback == null) return null;
-
-    return fallback.group(0)!.replaceAll('/', '-').replaceAll('.', '-');
+    return Uri.parse(
+      _jwcNoticeListUrl,
+    ).replace(queryParameters: queryParameters).toString();
   }
 
-  Dio _createNewsDio() {
+  Dio _createNoticeDio() {
     final client = Dio(
       BaseOptions(
         connectTimeout: const Duration(seconds: 10),
@@ -149,13 +139,13 @@ class NoticeService {
     return client;
   }
 
-  Future<Dio> _ensureNewsDio() async {
+  Future<Dio> _ensureNoticeDio() async {
     await NetworkSettings.instance.ensureInitialized();
-    final existing = _newsDio;
+    final existing = _noticeDio;
     if (existing != null) return existing;
 
-    final created = _createNewsDio();
-    _newsDio = created;
+    final created = _createNoticeDio();
+    _noticeDio = created;
     return created;
   }
 }

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shortcut_campus_card_payment_short_label">付款码</string>
+    <string name="shortcut_campus_card_payment_long_label">校园卡付款码</string>
+</resources>

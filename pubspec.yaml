@@ -27,6 +27,7 @@ dependencies:
 
   flutter_svg: ^2.0.0
   qr_flutter: ^4.1.0
+  charset: ^2.0.1
 
 dev_dependencies:
   flutter_test:

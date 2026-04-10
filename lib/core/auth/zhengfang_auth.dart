@@ -121,6 +121,13 @@ class CaptchaException implements Exception {
   String toString() => message;
 }
 
+class WebVpnAlreadyAuthenticatedException implements Exception {
+  WebVpnAlreadyAuthenticatedException();
+
+  @override
+  String toString() => 'WebVPN session already active';
+}
+
 /// WebVPN CAS 认证结果
 sealed class WebVpnCasResult {}
 
@@ -155,6 +162,8 @@ class ZhengfangAuth extends ChangeNotifier {
         '77726476706e69737468656265737421fcfe439d3720264a74109ce29d51367b2b47',
     'zhx.zjxu.edu.cn':
         '77726476706e69737468656265737421eaff59d23d3a7045300d8db9d6562d',
+    'newca.zjxu.edu.cn':
+        '77726476706e69737468656265737421fef2569f267e725a661dc7a99c406d362a',
   };
 
   /// WebVPN CAS 登录路径
@@ -357,6 +366,10 @@ class ZhengfangAuth extends ChangeNotifier {
   String? _cachedAesIv; // AES 加密 IV akey
 
   /// 获取 WebVPN CAS 验证码
+  ///
+  /// 当 WebVPN 已有有效会话时，/login 会重定向到 getUserDetail 等
+  /// 非 CAS 登录页面，此时抛出 [WebVpnAlreadyAuthenticatedException]，
+  /// 调用方应视为登录已成功。
   Future<Uint8List> fetchWebVpnCasCaptcha() async {
     await DioClient.instance.ensureInitialized();
     AppLogger.instance.debug('正在获取 WebVPN CAS 登录页面...');
@@ -378,6 +391,19 @@ class ZhengfangAuth extends ChangeNotifier {
       casLoginUrl = '$_webVpnBase$casLoginUrl';
     }
     AppLogger.instance.debug('CAS 登录页面: $casLoginUrl');
+
+    // 检测 WebVPN 已认证状态：如果 302 重定向目标不是 CAS 登录页
+    // (例如重定向到 getUserDetail)，说明 WebVPN 会话已有效
+    final casLoginUrlLower = casLoginUrl.toLowerCase();
+    if (!casLoginUrlLower.contains('/cas/login')) {
+      AppLogger.instance.info('WebVPN 已有有效会话，重定向到: $casLoginUrl');
+      // 跟随重定向链建立完整 session
+      await _followWebVpnRedirectChain(loginUri, casLoginUrl);
+      await syncWebVpnCookiesToWebView();
+      _sessionActive = true;
+      notifyListeners();
+      throw WebVpnAlreadyAuthenticatedException();
+    }
 
     final casResp = await _dio.get<String>(
       casLoginUrl,
@@ -801,6 +827,37 @@ class ZhengfangAuth extends ChangeNotifier {
       );
 
       if (redirectedToLogin || landedOnLogin) {
+        // 如果 WebVPN CAS 已认证，CAS SSO 可能能自动完成重定向链，
+        // 跟随重定向确认是否能到达目标页面
+        if (_sessionActive &&
+            redirectedToLogin &&
+            resolvedLocation.toLowerCase().contains('/cas/login')) {
+          AppLogger.instance.debug(
+            'WebVPN 目标重定向到 CAS，但 WebVPN 已认证，尝试跟随 SSO 重定向链...',
+          );
+          try {
+            await _followWebVpnRedirectChain(probeUrl, resolvedLocation);
+            // SSO 重定向链走完后再次探测目标
+            final retryResp = await _dio.get<String>(
+              probeUrl,
+              options: Options(
+                responseType: ResponseType.plain,
+                followRedirects: true,
+                validateStatus: (status) => status != null && status < 1000,
+                headers: {'Referer': '$_webVpnBase/'},
+              ),
+            );
+            final retryLandedOnLogin = isZhengfangLoginEntryUrl(
+              retryResp.realUri.toString(),
+            );
+            if (!retryLandedOnLogin) {
+              AppLogger.instance.info('WebVPN 目标会话 SSO 已自动恢复: $probeUrl');
+              return true;
+            }
+          } catch (e) {
+            AppLogger.instance.debug('WebVPN 目标 SSO 跟随失败: $e');
+          }
+        }
         AppLogger.instance.info('WebVPN 目标会话已失效: $probeUrl');
         return false;
       }
