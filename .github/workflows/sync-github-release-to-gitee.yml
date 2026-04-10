@@ -103,14 +103,6 @@ jobs:
           release_status="$(curl --silent --show-error -o gitee_release.json -w '%{http_code}' "${tag_query_url}")"
           if [ "${release_status}" = "200" ]; then
             release_id="$(jq -r '.id // empty' gitee_release.json)"
-            curl --silent --show-error --fail-with-body \
-              -X PATCH "${gitee_release_api}/${release_id}" \
-              -F "access_token=${GITEE_TOKEN}" \
-              -F "tag_name=${RELEASE_TAG}" \
-              -F "name=${RELEASE_NAME}" \
-              --form-string "body=${release_body}" \
-              -F "prerelease=false" \
-              -o gitee_release.json
           elif [ "${release_status}" = "404" ]; then
             curl --silent --show-error --fail-with-body \
               -X POST "${gitee_release_api}" \
@@ -132,17 +124,6 @@ jobs:
             cat gitee_release.json
             echo "Failed to resolve Gitee release id" >&2
             exit 1
-          fi
-
-          existing_asset_ids="$(jq -r --arg apk_name "${APK_NAME}" '.assets[]? | objects | select((.name // "") == $apk_name) | .id // empty' gitee_release.json)"
-          if [ -n "${existing_asset_ids}" ]; then
-            while IFS= read -r asset_id; do
-              if [ -z "${asset_id}" ]; then
-                continue
-              fi
-              curl --silent --show-error --fail-with-body \
-                -X DELETE "${gitee_release_api}/${release_id}/attach_files/${asset_id}?access_token=${GITEE_TOKEN}"
-            done <<< "${existing_asset_ids}"
           fi
 
           curl --silent --show-error --fail-with-body \
