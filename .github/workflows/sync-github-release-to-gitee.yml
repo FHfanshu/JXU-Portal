@@ -100,6 +100,7 @@ jobs:
           release_body="$(cat RELEASE_BODY.md)"
           tag_query_url="${gitee_release_api}/tags/${RELEASE_TAG}?access_token=${GITEE_TOKEN}"
 
+          echo "Querying Gitee release for tag ${RELEASE_TAG}"
           release_status="$(curl --silent --show-error -o gitee_release.json -w '%{http_code}' "${tag_query_url}")"
           release_id=""
           if [ "${release_status}" = "200" ]; then
@@ -109,6 +110,7 @@ jobs:
           if [ -n "${release_id}" ]; then
             echo "Reusing existing Gitee release ${release_id}"
           elif [ "${release_status}" = "200" ] || [ "${release_status}" = "404" ]; then
+            echo "Creating Gitee release for ${RELEASE_TAG}"
             curl --silent --show-error --fail-with-body \
               -X POST "${gitee_release_api}" \
               -F "access_token=${GITEE_TOKEN}" \
@@ -131,11 +133,17 @@ jobs:
             exit 1
           fi
 
-          curl --silent --show-error --fail-with-body \
+          echo "Uploading ${APK_NAME} to Gitee release ${release_id}"
+          curl --progress-bar --show-error --fail-with-body \
+            --connect-timeout 30 \
+            --max-time 1800 \
+            --retry 2 \
+            --retry-all-errors \
             -X POST "${gitee_release_api}/${release_id}/attach_files" \
             -F "access_token=${GITEE_TOKEN}" \
             -F "file=@${APK_NAME}" \
             -o gitee_attach.json
+          echo "Upload request finished"
 
           gitee_download_url="$(jq -r '.browser_download_url // empty' gitee_attach.json)"
           if [ -z "${gitee_download_url}" ]; then
