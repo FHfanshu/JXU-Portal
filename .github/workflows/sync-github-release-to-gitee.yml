@@ -135,6 +135,7 @@ jobs:
 
           echo "Uploading ${APK_NAME} to Gitee release ${release_id}"
           curl --progress-bar --show-error --fail-with-body \
+            -H "Expect:" \
             --connect-timeout 30 \
             --max-time 1800 \
             --retry 2 \
