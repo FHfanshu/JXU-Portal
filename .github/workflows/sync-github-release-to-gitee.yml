@@ -1,0 +1,166 @@
+name: Sync GitHub Release To Gitee
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 指定要同步的 GitHub Release tag，留空则同步最新版本
+        required: false
+        type: string
+
+jobs:
+  sync-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      GH_OWNER: FHfanshu
+      GH_REPO: JXU-Portal
+      GITEE_OWNER: fhfanshu
+      GITEE_REPO: JXU-Portal
+      GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+      INPUT_TAG: ${{ github.event.inputs.tag || '' }}
+    steps:
+      - name: Validate secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${GITEE_TOKEN}" ]; then
+            echo "Missing required secret: GITEE_TOKEN" >&2
+            exit 1
+          fi
+
+      - name: Fetch GitHub release metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          github_release_api="https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/releases/latest"
+          if [ -n "${INPUT_TAG}" ]; then
+            github_release_api="https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/releases/tags/${INPUT_TAG}"
+          fi
+
+          curl --silent --show-error --fail-with-body \
+            -H "Accept: application/vnd.github+json" \
+            -H "User-Agent: JXU-Portal-Release-Sync" \
+            "${github_release_api}" \
+            -o github_release.json
+
+          release_tag="$(jq -r '.tag_name // empty' github_release.json)"
+          release_name="$(jq -r '.name // empty' github_release.json)"
+          release_body="$(jq -r '.body // empty' github_release.json)"
+          target_commitish="$(jq -r '.target_commitish // "main"' github_release.json)"
+          apk_name="$(jq -r '[.assets[]? | select((.name // "" | ascii_downcase | endswith(".apk")))] | first | .name // empty' github_release.json)"
+          apk_url="$(jq -r '[.assets[]? | select((.name // "" | ascii_downcase | endswith(".apk")))] | first | .browser_download_url // empty' github_release.json)"
+
+          if [ -z "${release_tag}" ]; then
+            echo "GitHub release tag is empty" >&2
+            exit 1
+          fi
+          if [ -z "${release_name}" ]; then
+            release_name="${release_tag}"
+          fi
+          if [ -z "${release_body}" ]; then
+            release_body="同步 GitHub Release ${release_tag}"
+          fi
+          if [ -z "${apk_name}" ] || [ -z "${apk_url}" ]; then
+            echo "No APK asset found in GitHub release ${release_tag}" >&2
+            exit 1
+          fi
+
+          printf '%s' "${release_body}" > RELEASE_BODY.md
+
+          {
+            echo "RELEASE_TAG=${release_tag}"
+            echo "RELEASE_NAME=${release_name}"
+            echo "TARGET_COMMITISH=${target_commitish}"
+            echo "APK_NAME=${apk_name}"
+            echo "APK_URL=${apk_url}"
+          } >> "${GITHUB_ENV}"
+
+      - name: Download GitHub APK asset
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          curl --silent --show-error --fail-with-body -L \
+            -H "User-Agent: JXU-Portal-Release-Sync" \
+            "${APK_URL}" \
+            -o "${APK_NAME}"
+
+      - name: Upsert Gitee release and upload APK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gitee_release_api="https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases"
+          release_body="$(cat RELEASE_BODY.md)"
+          tag_query_url="${gitee_release_api}/tags/${RELEASE_TAG}?access_token=${GITEE_TOKEN}"
+
+          release_status="$(curl --silent --show-error -o gitee_release.json -w '%{http_code}' "${tag_query_url}")"
+          if [ "${release_status}" = "200" ]; then
+            release_id="$(jq -r '.id // empty' gitee_release.json)"
+            curl --silent --show-error --fail-with-body \
+              -X PATCH "${gitee_release_api}/${release_id}" \
+              -F "access_token=${GITEE_TOKEN}" \
+              -F "tag_name=${RELEASE_TAG}" \
+              -F "name=${RELEASE_NAME}" \
+              --form-string "body=${release_body}" \
+              -F "prerelease=false" \
+              -o gitee_release.json
+          elif [ "${release_status}" = "404" ]; then
+            curl --silent --show-error --fail-with-body \
+              -X POST "${gitee_release_api}" \
+              -F "access_token=${GITEE_TOKEN}" \
+              -F "tag_name=${RELEASE_TAG}" \
+              -F "name=${RELEASE_NAME}" \
+              --form-string "body=${release_body}" \
+              -F "prerelease=false" \
+              -F "target_commitish=${TARGET_COMMITISH}" \
+              -o gitee_release.json
+          else
+            cat gitee_release.json
+            echo "Failed to query Gitee release, status: ${release_status}" >&2
+            exit 1
+          fi
+
+          release_id="$(jq -r '.id // empty' gitee_release.json)"
+          if [ -z "${release_id}" ]; then
+            cat gitee_release.json
+            echo "Failed to resolve Gitee release id" >&2
+            exit 1
+          fi
+
+          existing_asset_ids="$(jq -r --arg apk_name "${APK_NAME}" '.assets[]? | objects | select((.name // "") == $apk_name) | .id // empty' gitee_release.json)"
+          if [ -n "${existing_asset_ids}" ]; then
+            while IFS= read -r asset_id; do
+              if [ -z "${asset_id}" ]; then
+                continue
+              fi
+              curl --silent --show-error --fail-with-body \
+                -X DELETE "${gitee_release_api}/${release_id}/attach_files/${asset_id}?access_token=${GITEE_TOKEN}"
+            done <<< "${existing_asset_ids}"
+          fi
+
+          curl --silent --show-error --fail-with-body \
+            -X POST "${gitee_release_api}/${release_id}/attach_files" \
+            -F "access_token=${GITEE_TOKEN}" \
+            -F "file=@${APK_NAME}" \
+            -o gitee_attach.json
+
+          gitee_download_url="$(jq -r '.browser_download_url // empty' gitee_attach.json)"
+          if [ -z "${gitee_download_url}" ]; then
+            cat gitee_attach.json
+            echo "Failed to upload APK to Gitee release" >&2
+            exit 1
+          fi
+
+          {
+            echo "## Synced Release"
+            echo ""
+            echo "- GitHub tag: ${RELEASE_TAG}"
+            echo "- Gitee asset: ${gitee_download_url}"
+          } >> "${GITHUB_STEP_SUMMARY}"
