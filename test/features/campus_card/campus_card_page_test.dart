@@ -48,9 +48,6 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('更多操作'));
-    await tester.pumpAndSettle();
-
     expect(find.text('添加至桌面'), findsOneWidget);
 
     await tester.tap(find.text('添加至桌面'));
