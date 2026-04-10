@@ -8,8 +8,6 @@ import '../../core/auth/credential_store.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/logging/app_logger.dart';
 
-/// Reusable login form widget. Calls [onLoginSuccess] when login succeeds.
-/// 支持直连和 WebVPN 两种模式。
 class LoginWidget extends StatefulWidget {
   const LoginWidget({
     super.key,
@@ -31,7 +29,6 @@ class _LoginWidgetState extends State<LoginWidget> {
   final _passwordCtrl = TextEditingController();
   final _captchaCtrl = TextEditingController();
 
-  // WebVPN 两步登录相关
   final _accountCtrl = TextEditingController();
   final _accountPasswordCtrl = TextEditingController();
   final _casCaptchaCtrl = TextEditingController();
@@ -41,13 +38,8 @@ class _LoginWidgetState extends State<LoginWidget> {
   bool _loading = false;
   String? _error;
 
-  /// 当前连接模式
   ZhengfangMode _mode = ZhengfangMode.direct;
-
-  /// WebVPN 一卡通认证是否完成
   bool _casAuthenticated = false;
-
-  /// 是否正在进行自动检测
   bool _autoDetecting = false;
 
   @override
@@ -57,7 +49,6 @@ class _LoginWidgetState extends State<LoginWidget> {
     _autoDetectNetwork();
   }
 
-  /// 自动检测网络环境并选择合适的登录模式
   Future<void> _autoDetectNetwork() async {
     if (_autoDetecting) return;
     _autoDetecting = true;
@@ -167,7 +158,6 @@ class _LoginWidgetState extends State<LoginWidget> {
     }
   }
 
-  /// 获取 WebVPN CAS 验证码
   Future<void> _refreshCasCaptcha() async {
     try {
       final bytes = await ZhengfangAuth.instance.fetchWebVpnCasCaptcha();
@@ -196,7 +186,6 @@ class _LoginWidgetState extends State<LoginWidget> {
     }
   }
 
-  /// 切换到 WebVPN 模式
   void _switchToWebVpn() {
     ZhengfangAuth.instance.setMode(ZhengfangMode.webVpn);
     setState(() {
@@ -210,7 +199,6 @@ class _LoginWidgetState extends State<LoginWidget> {
     _refreshCasCaptcha();
   }
 
-  /// 切换到直连模式
   void _switchToDirect() {
     ZhengfangAuth.instance.setMode(ZhengfangMode.direct);
     setState(() {
@@ -225,7 +213,6 @@ class _LoginWidgetState extends State<LoginWidget> {
     _refreshCaptcha();
   }
 
-  /// Step 1: WebVPN 一卡通认证 (含验证码)
   Future<void> _authenticateCas() async {
     final account = _accountCtrl.text.trim();
     final password = _accountPasswordCtrl.text;
@@ -333,38 +320,38 @@ class _LoginWidgetState extends State<LoginWidget> {
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.titleLarge,
             ),
-            if (_mode == ZhengfangMode.webVpn) ...[
-              const SizedBox(height: 4),
-              Text(
-                'WebVPN 模式',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: colorScheme.primary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
             const SizedBox(height: 32),
           ] else if (_mode == ZhengfangMode.webVpn) ...[
             Container(
-              margin: const EdgeInsets.only(top: 8, bottom: 20),
+              margin: const EdgeInsets.only(bottom: 16),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: colorScheme.primary.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(999),
               ),
-              child: Text(
-                '当前为 WebVPN 登录模式',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: colorScheme.primary,
-                  fontWeight: FontWeight.w600,
-                ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.vpn_lock_outlined,
+                    size: 16,
+                    color: colorScheme.primary,
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      '当前为 WebVPN 登录模式',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: colorScheme.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
 
-          // ── 网络检测中 ──
           if (_autoDetecting)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 32),
@@ -382,11 +369,9 @@ class _LoginWidgetState extends State<LoginWidget> {
               ),
             ),
 
-          // ── 直连模式：标准登录表单 ──
           if (!_autoDetecting && _mode == ZhengfangMode.direct)
             ..._buildDirectLoginForm(colorScheme),
 
-          // ── WebVPN 模式：两步登录 ──
           if (!_autoDetecting &&
               _mode == ZhengfangMode.webVpn &&
               !_casAuthenticated)
@@ -396,7 +381,6 @@ class _LoginWidgetState extends State<LoginWidget> {
               _casAuthenticated)
             ..._buildWebVpnJwzxForm(colorScheme),
 
-          // ── 错误信息 ──
           if (_error != null) ...[
             const SizedBox(height: 12),
             Text(
@@ -406,7 +390,6 @@ class _LoginWidgetState extends State<LoginWidget> {
             ),
           ],
 
-          // ── 非校园网提示 ──
           if (_mode == ZhengfangMode.direct &&
               _captchaBytes == null &&
               _error != null &&
@@ -416,14 +399,6 @@ class _LoginWidgetState extends State<LoginWidget> {
               onPressed: _switchToWebVpn,
               icon: const Icon(Icons.vpn_lock, size: 18),
               label: const Text('切换到 WebVPN 登录'),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '非校园网环境请使用 WebVPN',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
             ),
           ],
         ],
@@ -436,94 +411,51 @@ class _LoginWidgetState extends State<LoginWidget> {
       TextField(
         controller: _usernameCtrl,
         decoration: const InputDecoration(
-          labelText: '学号',
+          hintText: '学号',
           prefixIcon: Icon(Icons.person_outline),
-          border: OutlineInputBorder(),
         ),
         keyboardType: TextInputType.number,
         textInputAction: TextInputAction.next,
       ),
-      const SizedBox(height: 16),
+      const SizedBox(height: 12),
       TextField(
         controller: _passwordCtrl,
         decoration: const InputDecoration(
-          labelText: '密码',
+          hintText: '密码',
           prefixIcon: Icon(Icons.lock_outline),
-          border: OutlineInputBorder(),
         ),
         obscureText: true,
         textInputAction: TextInputAction.next,
       ),
-      const SizedBox(height: 16),
-      Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: _captchaCtrl,
-              decoration: const InputDecoration(
-                labelText: '验证码',
-                prefixIcon: Icon(Icons.security),
-                border: OutlineInputBorder(),
-              ),
-              textInputAction: TextInputAction.done,
-              onSubmitted: (_) => _login(),
-            ),
-          ),
-          const SizedBox(width: 12),
-          GestureDetector(
-            onTap: _refreshCaptcha,
-            child: Container(
-              width: 120,
-              height: 56,
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: _error != null && _captchaBytes == null
-                      ? colorScheme.error
-                      : colorScheme.outline,
-                ),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: _captchaBytes != null
-                  ? ClipRRect(
-                      borderRadius: BorderRadius.circular(3),
-                      child: Image.memory(_captchaBytes!, fit: BoxFit.fill),
-                    )
-                  : _error != null
-                  ? Center(
-                      child: Icon(
-                        Icons.refresh,
-                        color: colorScheme.error,
-                        size: 28,
-                      ),
-                    )
-                  : const Center(child: CircularProgressIndicator()),
-            ),
-          ),
-        ],
+      const SizedBox(height: 12),
+      _buildCaptchaRow(
+        captchaCtrl: _captchaCtrl,
+        captchaBytes: _captchaBytes,
+        onRefresh: _refreshCaptcha,
       ),
-      const SizedBox(height: 24),
+      const SizedBox(height: 8),
+      Text(
+        '点击验证码可刷新',
+        style: TextStyle(color: Colors.grey[500], fontSize: 12),
+        textAlign: TextAlign.center,
+      ),
+      const SizedBox(height: 20),
       FilledButton(
         onPressed: _loading ? null : _login,
         child: _loading
             ? const SizedBox(
                 height: 20,
                 width: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
               )
-            : const Text('登 录'),
-      ),
-      const SizedBox(height: 8),
-      Text(
-        '点击验证码图片可刷新',
-        textAlign: TextAlign.center,
-        style: Theme.of(
-          context,
-        ).textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
+            : const Text('登录'),
       ),
     ];
   }
 
-  /// Step 1: WebVPN 一卡通认证表单 (含验证码)
   List<Widget> _buildWebVpnCasForm(ColorScheme colorScheme) {
     return [
       _buildStepHeader('1', '一卡通认证', false),
@@ -531,9 +463,8 @@ class _LoginWidgetState extends State<LoginWidget> {
       TextField(
         controller: _accountCtrl,
         decoration: const InputDecoration(
-          labelText: '一卡通账号',
+          hintText: '一卡通账号',
           prefixIcon: Icon(Icons.person_outline),
-          border: OutlineInputBorder(),
         ),
         textInputAction: TextInputAction.next,
       ),
@@ -541,80 +472,39 @@ class _LoginWidgetState extends State<LoginWidget> {
       TextField(
         controller: _accountPasswordCtrl,
         decoration: const InputDecoration(
-          labelText: '一卡通密码',
+          hintText: '一卡通密码',
           prefixIcon: Icon(Icons.lock_outline),
-          border: OutlineInputBorder(),
         ),
         obscureText: true,
         textInputAction: TextInputAction.next,
       ),
       const SizedBox(height: 12),
-      Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: _casCaptchaCtrl,
-              decoration: const InputDecoration(
-                labelText: '验证码',
-                prefixIcon: Icon(Icons.security),
-                border: OutlineInputBorder(),
-              ),
-              textInputAction: TextInputAction.done,
-              onSubmitted: (_) => _authenticateCas(),
-            ),
-          ),
-          const SizedBox(width: 12),
-          GestureDetector(
-            onTap: _refreshCasCaptcha,
-            child: Container(
-              width: 120,
-              height: 56,
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: _error != null && _casCaptchaBytes == null
-                      ? colorScheme.error
-                      : colorScheme.outline,
-                ),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: _casCaptchaBytes != null
-                  ? ClipRRect(
-                      borderRadius: BorderRadius.circular(3),
-                      child: Image.memory(_casCaptchaBytes!, fit: BoxFit.fill),
-                    )
-                  : _error != null
-                  ? Center(
-                      child: Icon(
-                        Icons.refresh,
-                        color: colorScheme.error,
-                        size: 28,
-                      ),
-                    )
-                  : const Center(child: CircularProgressIndicator()),
-            ),
-          ),
-        ],
+      _buildCaptchaRow(
+        captchaCtrl: _casCaptchaCtrl,
+        captchaBytes: _casCaptchaBytes,
+        onRefresh: _refreshCasCaptcha,
       ),
-      const SizedBox(height: 16),
+      const SizedBox(height: 8),
+      Text(
+        '点击验证码可刷新',
+        style: TextStyle(color: Colors.grey[500], fontSize: 12),
+        textAlign: TextAlign.center,
+      ),
+      const SizedBox(height: 20),
       FilledButton(
         onPressed: _loading ? null : _authenticateCas,
         child: _loading
             ? const SizedBox(
                 height: 20,
                 width: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
               )
             : const Text('一卡通认证'),
       ),
       const SizedBox(height: 8),
-      Text(
-        '点击验证码图片可刷新',
-        textAlign: TextAlign.center,
-        style: Theme.of(
-          context,
-        ).textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
-      ),
-      const SizedBox(height: 12),
       TextButton.icon(
         onPressed: _switchToDirect,
         icon: const Icon(Icons.swap_horiz, size: 16),
@@ -632,9 +522,8 @@ class _LoginWidgetState extends State<LoginWidget> {
       TextField(
         controller: _usernameCtrl,
         decoration: const InputDecoration(
-          labelText: '学号',
+          hintText: '学号',
           prefixIcon: Icon(Icons.badge_outlined),
-          border: OutlineInputBorder(),
         ),
         keyboardType: TextInputType.number,
         textInputAction: TextInputAction.next,
@@ -643,80 +532,89 @@ class _LoginWidgetState extends State<LoginWidget> {
       TextField(
         controller: _passwordCtrl,
         decoration: const InputDecoration(
-          labelText: '教务系统密码',
+          hintText: '教务系统密码',
           prefixIcon: Icon(Icons.lock_outline),
-          border: OutlineInputBorder(),
         ),
         obscureText: true,
         textInputAction: TextInputAction.next,
       ),
       const SizedBox(height: 12),
-      Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: _captchaCtrl,
-              decoration: const InputDecoration(
-                labelText: '验证码',
-                prefixIcon: Icon(Icons.security),
-                border: OutlineInputBorder(),
-              ),
-              textInputAction: TextInputAction.done,
-              onSubmitted: (_) => _login(),
-            ),
-          ),
-          const SizedBox(width: 12),
-          GestureDetector(
-            onTap: _refreshCaptcha,
-            child: Container(
-              width: 120,
-              height: 56,
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: _error != null && _captchaBytes == null
-                      ? colorScheme.error
-                      : colorScheme.outline,
-                ),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: _captchaBytes != null
-                  ? ClipRRect(
-                      borderRadius: BorderRadius.circular(3),
-                      child: Image.memory(_captchaBytes!, fit: BoxFit.fill),
-                    )
-                  : _error != null
-                  ? Center(
-                      child: Icon(
-                        Icons.refresh,
-                        color: colorScheme.error,
-                        size: 28,
-                      ),
-                    )
-                  : const Center(child: CircularProgressIndicator()),
-            ),
-          ),
-        ],
+      _buildCaptchaRow(
+        captchaCtrl: _captchaCtrl,
+        captchaBytes: _captchaBytes,
+        onRefresh: _refreshCaptcha,
       ),
-      const SizedBox(height: 24),
+      const SizedBox(height: 8),
+      Text(
+        '点击验证码可刷新',
+        style: TextStyle(color: Colors.grey[500], fontSize: 12),
+        textAlign: TextAlign.center,
+      ),
+      const SizedBox(height: 20),
       FilledButton(
         onPressed: _loading ? null : _login,
         child: _loading
             ? const SizedBox(
                 height: 20,
                 width: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
               )
-            : const Text('登 录'),
-      ),
-      const SizedBox(height: 8),
-      Text(
-        '点击验证码图片可刷新',
-        textAlign: TextAlign.center,
-        style: Theme.of(
-          context,
-        ).textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
+            : const Text('登录'),
       ),
     ];
+  }
+
+  Widget _buildCaptchaRow({
+    required TextEditingController captchaCtrl,
+    required Uint8List? captchaBytes,
+    required VoidCallback onRefresh,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: TextField(
+            controller: captchaCtrl,
+            decoration: const InputDecoration(
+              hintText: '验证码',
+              prefixIcon: Icon(Icons.shield_outlined),
+            ),
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => _login(),
+          ),
+        ),
+        const SizedBox(width: 12),
+        GestureDetector(
+          onTap: onRefresh,
+          child: Container(
+            width: 112,
+            height: 52,
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: cs.outlineVariant.withValues(alpha: 0.5),
+                width: 0.8,
+              ),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(11),
+              child: captchaBytes != null
+                  ? Image.memory(captchaBytes, fit: BoxFit.cover)
+                  : _error != null
+                  ? Icon(Icons.refresh, color: cs.error, size: 24)
+                  : const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _buildStepHeader(String number, String label, bool done) {

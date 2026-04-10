@@ -222,74 +222,23 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
           TextField(
             controller: _usernameCtrl,
             decoration: const InputDecoration(
-              labelText: '一卡通账号',
+              hintText: '一卡通账号',
               prefixIcon: Icon(Icons.person_outline),
-              border: OutlineInputBorder(),
             ),
             textInputAction: TextInputAction.next,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           TextField(
             controller: _passwordCtrl,
             decoration: const InputDecoration(
-              labelText: '密码',
+              hintText: '密码',
               prefixIcon: Icon(Icons.lock_outline),
-              border: OutlineInputBorder(),
             ),
             obscureText: true,
             textInputAction: TextInputAction.next,
           ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _captchaCtrl,
-                  decoration: const InputDecoration(
-                    labelText: '验证码',
-                    prefixIcon: Icon(Icons.security),
-                    border: OutlineInputBorder(),
-                  ),
-                  textInputAction: TextInputAction.done,
-                  onSubmitted: (_) => _login(),
-                ),
-              ),
-              const SizedBox(width: 12),
-              GestureDetector(
-                onTap: _refreshCaptcha,
-                child: Container(
-                  width: 120,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    border: Border.all(
-                      color: _error != null && _captchaBytes == null
-                          ? cs.error
-                          : cs.outline,
-                    ),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: _captchaBytes != null
-                      ? ClipRRect(
-                          borderRadius: BorderRadius.circular(3),
-                          child: Image.memory(_captchaBytes!, fit: BoxFit.fill),
-                        )
-                      : _error != null
-                      ? Center(
-                          child: Icon(Icons.refresh, color: cs.error, size: 28),
-                        )
-                      : const Center(child: CircularProgressIndicator()),
-                ),
-              ),
-            ],
-          ),
-          if (_error != null) ...[
-            const SizedBox(height: 12),
-            Text(
-              _error!,
-              style: TextStyle(color: cs.error, fontSize: 13),
-              textAlign: TextAlign.center,
-            ),
-          ],
+          const SizedBox(height: 12),
+          _buildCaptchaRow(cs),
           const SizedBox(height: 24),
           FilledButton(
             onPressed: _loading ? null : _login,
@@ -297,20 +246,60 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
                 ? const SizedBox(
                     height: 20,
                     width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
                   )
-                : const Text('登 录'),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '验证码点击可刷新，登录成功后会自动进入对应服务',
-            textAlign: TextAlign.center,
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                : const Text('登录'),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildCaptchaRow(ColorScheme cs) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _captchaCtrl,
+            decoration: const InputDecoration(
+              hintText: '验证码',
+              prefixIcon: Icon(Icons.shield_outlined),
+            ),
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => _login(),
+          ),
+        ),
+        const SizedBox(width: 12),
+        GestureDetector(
+          onTap: _refreshCaptcha,
+          child: Container(
+            width: 112,
+            height: 52,
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: cs.outlineVariant.withValues(alpha: 0.5),
+                width: 0.8,
+              ),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(11),
+              child: _captchaBytes != null
+                  ? Image.memory(_captchaBytes!, fit: BoxFit.cover)
+                  : _error != null
+                  ? Icon(Icons.refresh, color: cs.error, size: 24)
+                  : const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
