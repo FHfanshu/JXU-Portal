@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/auth/credential_store.dart';
 import '../../core/logging/app_logger.dart';
+import 'qr_scanner_page.dart';
 
 typedef WebViewLoadStopCallback =
     Future<void> Function(InAppWebViewController controller, String currentUrl);
@@ -98,7 +99,31 @@ WebResourceResponse _buildWeChatSdkStubResponse() {
     hideOptionMenu: noop,
     showOptionMenu: noop,
     closeWindow: noop,
-    miniProgram: { getEnv: noop, navigateTo: noop }
+    miniProgram: { getEnv: noop, navigateTo: noop },
+    scanQRCode: function (opts) {
+      var needResult = (opts && opts.needResult) ? opts.needResult : 0;
+      var successCb = (opts && typeof opts.onSuccess === 'function') ? opts.onSuccess : null;
+      var errorCb = (opts && typeof opts.onError === 'function') ? opts.onError : null;
+      try {
+        window.flutter_inappwebview.callHandler('wxScanQRCode', JSON.stringify({ needResult: needResult }))
+          .then(function (resultJson) {
+            var result = JSON.parse(resultJson || '{}');
+            if (result.cancelled) {
+              if (errorCb) errorCb({ errMsg: 'scanQRCode:cancel' });
+              return;
+            }
+            if (successCb) {
+              var scanResult = result.resultStr || '';
+              successCb({ resultStr: scanResult });
+            }
+          })
+          .catch(function (e) {
+            if (errorCb) errorCb({ errMsg: 'scanQRCode:fail ' + (e.message || e) });
+          });
+      } catch (e) {
+        if (errorCb) errorCb({ errMsg: 'scanQRCode:fail ' + (e.message || e) });
+      }
+    }
   };
   window.wx = wx;
 })();
@@ -791,6 +816,44 @@ class _WebViewPageState extends State<WebViewPage> {
                         c.addJavaScriptHandler(
                           handlerName: 'ddReady',
                           callback: (args) => {'success': true},
+                        );
+                        c.addJavaScriptHandler(
+                          handlerName: 'wxScanQRCode',
+                          callback: (args) async {
+                            final needResult = args.isNotEmpty
+                                ? (args.first is String
+                                      ? (jsonDecode(
+                                              args.first as String,
+                                            )['needResult'] ??
+                                            0)
+                                      : 0)
+                                : 0;
+                            AppLogger.instance.info(
+                              'wxScanQRCode 被调用, needResult=$needResult',
+                            );
+                            if (!mounted) {
+                              return jsonEncode({
+                                'cancelled': true,
+                                'resultStr': '',
+                              });
+                            }
+                            final result = await Navigator.of(context)
+                                .push<Map<String, dynamic>?>(
+                                  MaterialPageRoute(
+                                    builder: (_) => const QrScannerPage(),
+                                  ),
+                                );
+                            if (result == null) {
+                              return jsonEncode({
+                                'cancelled': true,
+                                'resultStr': '',
+                              });
+                            }
+                            return jsonEncode({
+                              'cancelled': false,
+                              'resultStr': result['code'] as String? ?? '',
+                            });
+                          },
                         );
                       },
                       onLoadStart: (_, url) {

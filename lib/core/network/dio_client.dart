@@ -12,16 +12,34 @@ class DioClient {
   DioClient._();
   static final DioClient instance = DioClient._();
   static const defaultZhengfangBaseUrl = 'https://jwzx.zjxu.edu.cn/jwglxt';
+  static const _zhengfangCookieFolderName = '.cookies';
+  static const _unifiedAuthCookieFolderName = '.cookies_unified_auth';
 
-  PersistCookieJar? _cookieJar;
-  Dio? _dio;
+  PersistCookieJar? _zhengfangCookieJar;
+  PersistCookieJar? _unifiedAuthCookieJar;
+  Dio? _zhengfangDio;
+  Dio? _unifiedAuthDio;
   Future<void>? _initFuture;
 
-  PersistCookieJar get cookieJar =>
-      _cookieJar ?? (throw StateError('DioClient has not been initialized.'));
+  PersistCookieJar get cookieJar => zhengfangCookieJar;
+
+  PersistCookieJar get zhengfangCookieJar =>
+      _zhengfangCookieJar ??
+      (throw StateError('DioClient has not been initialized.'));
+
+  PersistCookieJar get unifiedAuthCookieJar =>
+      _unifiedAuthCookieJar ??
+      (throw StateError('DioClient has not been initialized.'));
 
   Dio get dio =>
-      _dio ?? (throw StateError('DioClient has not been initialized.'));
+      _zhengfangDio ??
+      (throw StateError('DioClient has not been initialized.'));
+
+  Dio get zhengfangDio => dio;
+
+  Dio get unifiedAuthDio =>
+      _unifiedAuthDio ??
+      (throw StateError('DioClient has not been initialized.'));
 
   Future<void> init() async {
     await ensureInitialized();
@@ -44,25 +62,51 @@ class DioClient {
   }
 
   Future<void> _initialize() async {
-    if (_dio != null && _cookieJar != null) return;
+    if (_zhengfangDio != null &&
+        _unifiedAuthDio != null &&
+        _zhengfangCookieJar != null &&
+        _unifiedAuthCookieJar != null) {
+      return;
+    }
 
     await NetworkSettings.instance.ensureInitialized();
-    final cookieDir = await _resolveCookieDirectoryPath();
-    _cookieJar = PersistCookieJar(
-      storage: FileStorage(cookieDir),
+    final zhengfangCookieDir = await _resolveCookieDirectoryPath(
+      _zhengfangCookieFolderName,
+    );
+    final unifiedAuthCookieDir = await _resolveCookieDirectoryPath(
+      _unifiedAuthCookieFolderName,
+    );
+    _zhengfangCookieJar = PersistCookieJar(
+      storage: FileStorage(zhengfangCookieDir),
       persistSession: true,
     );
-    _dio = _createDio();
+    _unifiedAuthCookieJar = PersistCookieJar(
+      storage: FileStorage(unifiedAuthCookieDir),
+      persistSession: true,
+    );
+    _zhengfangDio = _createDio(
+      jar: _zhengfangCookieJar!,
+      baseUrl: defaultZhengfangBaseUrl,
+    );
+    _unifiedAuthDio = _createDio(
+      jar: _unifiedAuthCookieJar!,
+      baseUrl: 'https://newca.zjxu.edu.cn',
+    );
   }
 
   void applyProxyMode() {
-    final client = _dio;
-    if (client == null) return;
-    _applyProxyMode(client);
+    final zhengfangClient = _zhengfangDio;
+    if (zhengfangClient != null) {
+      _applyProxyMode(zhengfangClient);
+    }
+    final unifiedAuthClient = _unifiedAuthDio;
+    if (unifiedAuthClient != null) {
+      _applyProxyMode(unifiedAuthClient);
+    }
   }
 
   void updateBaseUrl(String baseUrl) {
-    final client = _dio;
+    final client = _zhengfangDio;
     if (client == null || client.options.baseUrl == baseUrl) return;
     client.options.baseUrl = baseUrl;
     AppLogger.instance.debug('教务请求基础地址已更新为: $baseUrl');
@@ -75,11 +119,10 @@ class DioClient {
     );
   }
 
-  Dio _createDio() {
-    final jar = _cookieJar!;
+  Dio _createDio({required PersistCookieJar jar, required String baseUrl}) {
     final client = Dio(
       BaseOptions(
-        baseUrl: defaultZhengfangBaseUrl,
+        baseUrl: baseUrl,
         connectTimeout: const Duration(seconds: 15),
         receiveTimeout: const Duration(seconds: 15),
         headers: {
@@ -133,23 +176,25 @@ class DioClient {
     return client;
   }
 
-  Future<String> _resolveCookieDirectoryPath() async {
+  Future<String> _resolveCookieDirectoryPath(String folderName) async {
     final override = debugCookieDirectoryPathProvider;
     if (override != null) {
-      return override();
+      return override(folderName);
     }
 
     final dir = await getApplicationDocumentsDirectory();
-    return '${dir.path}/.cookies/';
+    return '${dir.path}/$folderName/';
   }
 
   @visibleForTesting
-  Future<String> Function()? debugCookieDirectoryPathProvider;
+  Future<String> Function(String folderName)? debugCookieDirectoryPathProvider;
 
   @visibleForTesting
   void debugReset() {
-    _cookieJar = null;
-    _dio = null;
+    _zhengfangCookieJar = null;
+    _unifiedAuthCookieJar = null;
+    _zhengfangDio = null;
+    _unifiedAuthDio = null;
     _initFuture = null;
     debugCookieDirectoryPathProvider = null;
   }

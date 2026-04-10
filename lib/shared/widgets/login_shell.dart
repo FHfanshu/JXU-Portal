@@ -31,6 +31,8 @@ class LoginShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    final keyboardVisible = keyboardInset > 0;
     final isDark = theme.brightness == Brightness.dark;
     final pageBackground = theme.scaffoldBackgroundColor;
     final formSurface = isDark ? const Color(0xFF24191D) : Colors.white;
@@ -117,21 +119,28 @@ class LoginShell extends StatelessWidget {
           ),
           child: LayoutBuilder(
             builder: (context, constraints) {
-              const verticalPadding = 24.0;
-              final minHeight = constraints.maxHeight - verticalPadding - 28;
+              final topPadding = keyboardVisible ? 16.0 : 24.0;
+              final bottomPadding = 28.0 + keyboardInset + 12;
+              final minHeight =
+                  constraints.maxHeight - topPadding - bottomPadding;
 
               return SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: EdgeInsets.fromLTRB(
                   _kHorizontalMargin,
-                  verticalPadding,
+                  topPadding,
                   _kHorizontalMargin,
-                  28,
+                  bottomPadding,
                 ),
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
                     minHeight: minHeight > 0 ? minHeight : 0,
                   ),
-                  child: Center(
+                  child: Align(
+                    alignment: keyboardVisible
+                        ? Alignment.topCenter
+                        : Alignment.center,
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 420),
                       child: Container(

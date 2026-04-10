@@ -113,6 +113,7 @@ class UnifiedAuthService extends ChangeNotifier {
 
   static Future<bool> checkDirectReachable() async {
     try {
+      await NetworkSettings.instance.ensureInitialized();
       final dio = Dio(
         BaseOptions(
           connectTimeout: const Duration(seconds: 3),
@@ -120,6 +121,10 @@ class UnifiedAuthService extends ChangeNotifier {
           followRedirects: false,
           validateStatus: (s) => s != null && s < 500,
         ),
+      );
+      applyProxyModeToDio(
+        dio,
+        ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
       );
       AppLogger.instance.debug('正在测试统一认证直连...');
       final resp = await dio.get<String>(
@@ -140,6 +145,7 @@ class UnifiedAuthService extends ChangeNotifier {
 
   static Future<bool> checkWebVpnReachable() async {
     try {
+      await NetworkSettings.instance.ensureInitialized();
       final dio = Dio(
         BaseOptions(
           connectTimeout: const Duration(seconds: 3),
@@ -147,6 +153,10 @@ class UnifiedAuthService extends ChangeNotifier {
           followRedirects: true,
           validateStatus: (s) => s != null && s < 500,
         ),
+      );
+      applyProxyModeToDio(
+        dio,
+        ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
       );
       AppLogger.instance.debug('正在测试统一认证 WebVPN 连通性...');
       final resp = await dio.get<String>('$_webVpnOrigin/login');
@@ -173,8 +183,8 @@ class UnifiedAuthService extends ChangeNotifier {
 
   CookieManager? _cookieManager;
 
-  Dio get _dio => DioClient.instance.dio;
-  PersistCookieJar get _cookieJar => DioClient.instance.cookieJar;
+  Dio get _dio => DioClient.instance.unifiedAuthDio;
+  PersistCookieJar get _cookieJar => DioClient.instance.unifiedAuthCookieJar;
 
   _UnifiedAuthLoginContext? _cachedContext;
   bool _sessionActive = false;

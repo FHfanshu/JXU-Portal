@@ -255,8 +255,8 @@ class SettingsPage extends StatelessWidget {
               return Card(
                 clipBehavior: Clip.antiAlias,
                 child: SwitchListTile.adaptive(
-                  title: const Text('忽略系统代理（直连）'),
-                  subtitle: const Text('开启后，App 内网络请求不走系统代理'),
+                  title: const Text('忽略系统 HTTP 代理'),
+                  subtitle: const Text('仅对系统 HTTP 代理生效，不影响 VPN/TUN 代理类应用'),
                   value: ignoreSystemProxy,
                   onChanged: _setIgnoreSystemProxy,
                 ),

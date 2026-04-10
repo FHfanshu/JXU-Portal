@@ -116,5 +116,20 @@ void main() {
     test('isLoggedIn is false after debugReset', () {
       expect(UnifiedAuthService.instance.isLoggedIn, isFalse);
     });
+
+    test('debug session tracks account independently', () {
+      UnifiedAuthService.instance.debugSetSession(
+        active: true,
+        account: '00213544',
+      );
+
+      expect(UnifiedAuthService.instance.isLoggedIn, isTrue);
+      expect(UnifiedAuthService.instance.currentAccount, '00213544');
+
+      UnifiedAuthService.instance.debugReset();
+
+      expect(UnifiedAuthService.instance.isLoggedIn, isFalse);
+      expect(UnifiedAuthService.instance.currentAccount, isNull);
+    });
   });
 }

@@ -38,6 +38,8 @@ class _LoginWidgetState extends State<LoginWidget> {
   bool _needCasAuth = false;
   bool _casAuthenticating = false;
 
+  static const _proxyHint = '请求超时，请检查手机系统代理或 VPN 软件';
+
   @override
   void initState() {
     super.initState();
@@ -161,9 +163,11 @@ class _LoginWidgetState extends State<LoginWidget> {
       if (mounted) {
         setState(() {
           _captchaBytes = null;
-          if (e.type == DioExceptionType.connectionError ||
-              e.type == DioExceptionType.connectionTimeout) {
-            _error = '无法连接教务系统，请检查网络';
+          if (e.type == DioExceptionType.connectionTimeout ||
+              e.type == DioExceptionType.receiveTimeout) {
+            _error = '$_proxyHint，然后重试登录';
+          } else if (e.type == DioExceptionType.connectionError) {
+            _error = '无法连接教务系统，请检查网络或系统代理设置';
           } else {
             _error = '网络错误：${e.message ?? "请稍后重试"}';
           }
@@ -408,8 +412,8 @@ class _LoginWidgetState extends State<LoginWidget> {
         GestureDetector(
           onTap: _refreshCaptcha,
           child: Container(
-            width: 120,
-            height: 58,
+            width: 140,
+            height: 72,
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(16),
@@ -423,13 +427,13 @@ class _LoginWidgetState extends State<LoginWidget> {
               child: _captchaBytes != null
                   ? Padding(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
+                        horizontal: 4,
                         vertical: 6,
                       ),
                       child: Image.memory(
                         _captchaBytes!,
                         fit: BoxFit.contain,
-                        filterQuality: FilterQuality.medium,
+                        filterQuality: FilterQuality.high,
                       ),
                     )
                   : _error != null

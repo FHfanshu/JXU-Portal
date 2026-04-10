@@ -13,9 +13,9 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     NetworkSettings.instance.debugReset();
     DioClient.instance.debugReset();
-    DioClient.instance.debugCookieDirectoryPathProvider = () async {
+    DioClient.instance.debugCookieDirectoryPathProvider = (folderName) async {
       final dir = await Directory.systemTemp.createTemp('dio_client_test_');
-      return '${dir.path}/.cookies/';
+      return '${dir.path}/$folderName/';
     };
   });
 
@@ -27,11 +27,23 @@ void main() {
   test('ensureInitialized is idempotent', () async {
     await DioClient.instance.ensureInitialized();
     final dio = DioClient.instance.dio;
+    final unifiedAuthDio = DioClient.instance.unifiedAuthDio;
     final cookieJar = DioClient.instance.cookieJar;
+    final unifiedAuthCookieJar = DioClient.instance.unifiedAuthCookieJar;
 
     await DioClient.instance.ensureInitialized();
 
     expect(identical(dio, DioClient.instance.dio), isTrue);
+    expect(
+      identical(unifiedAuthDio, DioClient.instance.unifiedAuthDio),
+      isTrue,
+    );
     expect(identical(cookieJar, DioClient.instance.cookieJar), isTrue);
+    expect(
+      identical(unifiedAuthCookieJar, DioClient.instance.unifiedAuthCookieJar),
+      isTrue,
+    );
+    expect(identical(dio, unifiedAuthDio), isFalse);
+    expect(identical(cookieJar, unifiedAuthCookieJar), isFalse);
   });
 }

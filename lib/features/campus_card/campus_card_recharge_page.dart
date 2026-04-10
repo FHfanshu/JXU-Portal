@@ -97,12 +97,7 @@ class _CampusCardRechargePageState extends State<CampusCardRechargePage> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('充值需要在微信中完成', style: textTheme.headlineSmall),
-                const SizedBox(height: 12),
-                Text(
-                  '应用会优先直接调用微信打开晓付宝校园卡充值页。若没有自动跳转，可手动重试或复制链接到微信中打开。',
-                  style: textTheme.bodyMedium,
-                ),
+                Text('请到微信「嘉兴大学校园卡」服务号完成充值', style: textTheme.headlineSmall),
                 if (_statusMessage != null) ...[
                   const SizedBox(height: 16),
                   Text(
@@ -117,7 +112,7 @@ class _CampusCardRechargePageState extends State<CampusCardRechargePage> {
                   width: double.infinity,
                   child: FilledButton(
                     onPressed: _launching ? null : _openInWeChat,
-                    child: Text(_launching ? '正在打开微信...' : '打开微信继续充值'),
+                    child: Text(_launching ? '正在打开微信...' : '打开微信充值'),
                   ),
                 ),
                 const SizedBox(height: 12),

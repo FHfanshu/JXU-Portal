@@ -37,6 +37,7 @@ class _WebVpnProtectedWebViewPageState
   bool _loginPromptShown = false;
   bool _loginPromptInFlight = false;
   Key _webViewKey = UniqueKey();
+  DateTime? _casLoginPageSeenAt;
 
   @override
   void initState() {
@@ -129,9 +130,23 @@ class _WebVpnProtectedWebViewPageState
         AppLogger.instance.debug(
           'WebVPN WebView 命中 CAS 登录页但有 service 参数且已认证，等待 SSO 自动重定向',
         );
+        // 记录首次看到 CAS 登录页的时间，如果 5 秒后仍在登录页则回退到手动登录
+        if (_casLoginPageSeenAt == null) {
+          _casLoginPageSeenAt = DateTime.now();
+          Future.delayed(const Duration(seconds: 5), () {
+            if (!mounted) return;
+            if (_casLoginPageSeenAt == null) return;
+            _casLoginPageSeenAt = null;
+            // 仍在 CAS 登录页：SSO 未自动完成，回退到手动登录
+            if (_requiresLogin) return;
+            AppLogger.instance.info('CAS SSO 自动重定向超时，回退到手动登录');
+            _presentLoginPrompt(force: true);
+          });
+        }
         return;
       }
 
+      _casLoginPageSeenAt = null;
       AppLogger.instance.debug('WebVPN WebView 命中登录页，切换为应用内登录');
       if (mounted) {
         setState(() => _requiresLogin = true);
@@ -139,6 +154,8 @@ class _WebVpnProtectedWebViewPageState
       await _presentLoginPrompt(force: true);
       return;
     }
+
+    _casLoginPageSeenAt = null;
 
     if (mounted && _requiresLogin) {
       setState(() => _requiresLogin = false);

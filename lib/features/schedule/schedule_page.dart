@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../app/theme.dart';
 import '../../core/auth/zhengfang_auth.dart';
@@ -223,6 +224,17 @@ class _SchedulePageState extends State<SchedulePage> {
     }
   }
 
+  Future<void> _refreshScheduleOrLogin() async {
+    if (!_loggedIn) {
+      if (!mounted) return;
+      final loggedIn = await context.pushNamed<bool>('academic-system-login');
+      if (!mounted || loggedIn != true) return;
+      _onLoginSuccess();
+      return;
+    }
+    await _fetchSchedule(forceRefresh: true);
+  }
+
   void _onLoginSuccess() {
     setState(() {
       _loggedIn = true;
@@ -311,7 +323,7 @@ class _SchedulePageState extends State<SchedulePage> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.refresh),
-                  onPressed: () => _fetchSchedule(forceRefresh: true),
+                  onPressed: _refreshScheduleOrLogin,
                 ),
               ]
             : null,
@@ -342,7 +354,7 @@ class _SchedulePageState extends State<SchedulePage> {
             Text(_error!, style: const TextStyle(color: AppColors.error)),
             const SizedBox(height: 12),
             FilledButton(
-              onPressed: () => _fetchSchedule(forceRefresh: true),
+              onPressed: _refreshScheduleOrLogin,
               child: const Text('重试'),
             ),
           ],
@@ -358,7 +370,7 @@ class _SchedulePageState extends State<SchedulePage> {
             const SizedBox(height: 12),
             if (_loggedIn)
               FilledButton(
-                onPressed: () => _fetchSchedule(forceRefresh: true),
+                onPressed: _refreshScheduleOrLogin,
                 child: const Text('刷新课表'),
               ),
           ],

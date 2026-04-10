@@ -27,16 +27,6 @@ class _CampusCardPageState extends State<CampusCardPage> {
   bool _obscured = false;
 
   @override
-  void initState() {
-    super.initState();
-    if (CampusCardService.instance.cachedBalance == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _openCampusCardWebView(title: '校园卡账单', autoPop: true);
-      });
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
     final service = CampusCardService.instance;
     final balance = service.cachedBalance;
@@ -184,13 +174,39 @@ class _CampusCardPageState extends State<CampusCardPage> {
                 ],
               ),
               const SizedBox(height: 8),
-              Text(
-                timeText,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.white.withValues(alpha: 0.5),
+              if (balance == null)
+                GestureDetector(
+                  onTap: () =>
+                      _openCampusCardWebView(title: '校园卡账单', autoPop: true),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.touch_app,
+                        size: 14,
+                        color: Colors.white.withValues(alpha: 0.7),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '点击查询余额',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.white.withValues(alpha: 0.7),
+                          decoration: TextDecoration.underline,
+                          decorationColor: Colors.white.withValues(alpha: 0.5),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                Text(
+                  timeText,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.white.withValues(alpha: 0.5),
+                  ),
                 ),
-              ),
             ],
           ),
         ],
@@ -205,7 +221,7 @@ class _CampusCardPageState extends State<CampusCardPage> {
           child: _CampusCardActionCard(
             icon: Icons.add_circle_outline,
             title: '充值',
-            subtitle: '进入官方微信充值流程',
+            subtitle: '请到微信「嘉兴大学校园卡」服务号完成充值',
             color: AppColors.success,
             onTap: _openRechargePage,
           ),
@@ -390,6 +406,7 @@ class _CampusCardActionCard extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.all(18),
             child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
@@ -421,7 +438,6 @@ class _CampusCardActionCard extends StatelessWidget {
                     color: cs.onSurfaceVariant,
                   ),
                 ),
-                const Spacer(),
                 Align(
                   alignment: Alignment.centerRight,
                   child: Icon(

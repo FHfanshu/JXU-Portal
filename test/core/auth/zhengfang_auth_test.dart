@@ -4,6 +4,7 @@ import 'package:jiaxing_university_portal/core/auth/zhengfang_auth.dart';
 void main() {
   tearDown(() {
     ZhengfangAuth.instance.setMode(ZhengfangMode.direct);
+    ZhengfangAuth.instance.debugReset();
   });
 
   group('ZhengfangAuth portal urls', () {
@@ -107,6 +108,26 @@ void main() {
 ''';
 
       expect(looksLikeZhengfangLoginHtml(authenticatedHtml), isFalse);
+    });
+  });
+
+  group('zhengfang auth login result parsing', () {
+    test('accepts relative redirect target as authenticated result', () {
+      expect(
+        isZhengfangAuthenticatedUrl('/jwglxt/xtgl/index_initMenu.html?jsdm=xs'),
+        isTrue,
+      );
+    });
+
+    test('does not treat relative login entry as authenticated result', () {
+      expect(
+        isZhengfangLoginEntryUrl('/jwglxt/xtgl/login_slogin.html'),
+        isTrue,
+      );
+      expect(
+        isZhengfangAuthenticatedUrl('/jwglxt/xtgl/login_slogin.html'),
+        isFalse,
+      );
     });
   });
 }

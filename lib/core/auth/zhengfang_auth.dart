@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io' as io;
 
@@ -8,7 +9,10 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:pointycastle/export.dart';
 
 import '../logging/app_logger.dart';
+import '../network/cookie_interceptor.dart';
 import '../network/dio_client.dart';
+import '../network/network_settings.dart';
+import '../network/proxy_mode.dart';
 import 'credential_store.dart';
 
 bool isZhengfangGatewayLoginUrl(String currentUrl) {
@@ -176,10 +180,67 @@ class ZhengfangAuth extends ChangeNotifier {
   ZhengfangMode get mode => _mode;
 
   bool _sessionActive = false;
+  bool _webVpnSessionActive = false;
   String? currentStudentId;
 
   Dio get _dio => DioClient.instance.dio;
-  PersistCookieJar get _cookieJar => DioClient.instance.cookieJar;
+  PersistCookieJar get _cookieJar => DioClient.instance.zhengfangCookieJar;
+  PersistCookieJar get _webVpnCookieJar =>
+      DioClient.instance.unifiedAuthCookieJar;
+
+  Dio _createProxyFallbackDio() {
+    final baseOptions = _dio.options;
+    final client = Dio(
+      BaseOptions(
+        baseUrl: baseOptions.baseUrl,
+        connectTimeout: baseOptions.connectTimeout,
+        receiveTimeout: baseOptions.receiveTimeout,
+        sendTimeout: baseOptions.sendTimeout,
+        headers: Map<String, dynamic>.from(baseOptions.headers),
+        followRedirects: baseOptions.followRedirects,
+        validateStatus: baseOptions.validateStatus,
+      ),
+    );
+    client.interceptors.add(
+      buildCookieInterceptor(
+        _mode == ZhengfangMode.webVpn ? _webVpnCookieJar : _cookieJar,
+      ),
+    );
+    applyProxyModeToDio(client, ignoreSystemProxy: false);
+    return client;
+  }
+
+  bool _shouldRetryWithSystemProxy(DioException error) {
+    return NetworkSettings.instance.ignoreSystemProxy.value &&
+        (error.type == DioExceptionType.connectionTimeout ||
+            error.type == DioExceptionType.receiveTimeout ||
+            error.type == DioExceptionType.connectionError);
+  }
+
+  bool _shouldRetryWithSystemProxyForAny(Object error) {
+    if (!NetworkSettings.instance.ignoreSystemProxy.value) return false;
+    if (error is TimeoutException) return true;
+    if (error is DioException) return _shouldRetryWithSystemProxy(error);
+    return false;
+  }
+
+  Future<Response<T>> _sendWithProxyFallback<T>({
+    required String label,
+    required Future<Response<T>> Function(Dio dio) request,
+  }) async {
+    try {
+      return await request(_dio);
+    } catch (error) {
+      if (!_shouldRetryWithSystemProxyForAny(error)) rethrow;
+      AppLogger.instance.info('$label 直连失败，尝试通过系统代理重试');
+      final fallbackDio = _createProxyFallbackDio();
+      try {
+        return await request(fallbackDio);
+      } finally {
+        fallbackDio.close(force: true);
+      }
+    }
+  }
 
   String get _baseUrl => _mode == ZhengfangMode.direct
       ? _directBase
@@ -311,6 +372,10 @@ class ZhengfangAuth extends ChangeNotifier {
           validateStatus: (s) => s != null && s < 500,
         ),
       );
+      applyProxyModeToDio(
+        dio,
+        ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
+      );
       AppLogger.instance.debug('正在测试教务系统直连...');
       final resp = await dio.get<String>('$_directOrigin$_directLoginPath');
       final statusCode = resp.statusCode ?? 0;
@@ -347,6 +412,10 @@ class ZhengfangAuth extends ChangeNotifier {
           validateStatus: (s) => s != null && s < 500,
         ),
       );
+      applyProxyModeToDio(
+        dio,
+        ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
+      );
       AppLogger.instance.debug('正在测试 WebVPN 连通性...');
       final resp = await dio.get<String>('$_webVpnBase$_webVpnCasPath');
       AppLogger.instance.info('WebVPN 连通性: ${resp.statusCode}');
@@ -375,13 +444,16 @@ class ZhengfangAuth extends ChangeNotifier {
     AppLogger.instance.debug('正在获取 WebVPN CAS 登录页面...');
     // WebVPN /login 会 302 重定向到 CAS 登录页面，需要跟随重定向
     final loginUri = '$_webVpnBase$_webVpnCasPath';
-    final pageResp = await _dio.get<String>(
-      loginUri,
-      options: Options(
-        responseType: ResponseType.plain,
-        followRedirects: false, // 手动处理重定向
-        validateStatus: (s) => s != null && s < 400,
-        headers: {'Referer': loginUri},
+    final pageResp = await _sendWithProxyFallback<String>(
+      label: 'WebVPN CAS 登录页',
+      request: (dio) => dio.get<String>(
+        loginUri,
+        options: Options(
+          responseType: ResponseType.plain,
+          followRedirects: false, // 手动处理重定向
+          validateStatus: (s) => s != null && s < 400,
+          headers: {'Referer': loginUri},
+        ),
       ),
     );
 
@@ -400,16 +472,19 @@ class ZhengfangAuth extends ChangeNotifier {
       // 跟随重定向链建立完整 session
       await _followWebVpnRedirectChain(loginUri, casLoginUrl);
       await syncWebVpnCookiesToWebView();
-      _sessionActive = true;
+      markWebVpnLoggedIn();
       notifyListeners();
       throw WebVpnAlreadyAuthenticatedException();
     }
 
-    final casResp = await _dio.get<String>(
-      casLoginUrl,
-      options: Options(
-        responseType: ResponseType.plain,
-        headers: {'Referer': loginUri},
+    final casResp = await _sendWithProxyFallback<String>(
+      label: 'WebVPN CAS 登录上下文',
+      request: (dio) => dio.get<String>(
+        casLoginUrl,
+        options: Options(
+          responseType: ResponseType.plain,
+          headers: {'Referer': loginUri},
+        ),
       ),
     );
 
@@ -444,11 +519,14 @@ class ZhengfangAuth extends ChangeNotifier {
       queryParameters: {'vpn-1': '', 't': ts.toString()},
     ).toString();
     AppLogger.instance.debug('正在获取 WebVPN CAS 验证码 from: $captchaUri');
-    final resp = await _dio.get<List<int>>(
-      captchaUri,
-      options: Options(
-        responseType: ResponseType.bytes,
-        headers: {'Referer': casLoginUrl},
+    final resp = await _sendWithProxyFallback<List<int>>(
+      label: 'WebVPN CAS 验证码',
+      request: (dio) => dio.get<List<int>>(
+        captchaUri,
+        options: Options(
+          responseType: ResponseType.bytes,
+          headers: {'Referer': casLoginUrl},
+        ),
       ),
     );
 
@@ -494,22 +572,25 @@ class ZhengfangAuth extends ChangeNotifier {
         'WebVPN CAS 登录参数: username=$username, veriyCode=$captcha, lt=${lt != null && lt.length > 10 ? lt.substring(0, 10) : lt ?? ""}..., execution=${execution.length > 20 ? execution.substring(0, 20) : execution}...',
       );
 
-      final resp = await _dio.post<String>(
-        loginUri,
-        data: {
-          'username': username,
-          'password': encryptedPassword,
-          'veriyCode': captcha,
-          if (lt != null && lt.isNotEmpty) 'lt': lt,
-          'execution': execution,
-          '_eventId': 'submit',
-        },
-        options: Options(
-          contentType: 'application/x-www-form-urlencoded',
-          responseType: ResponseType.plain,
-          followRedirects: false,
-          validateStatus: (s) => s != null && s < 1000,
-          headers: {'Referer': loginUri, 'Origin': _webVpnBase},
+      final resp = await _sendWithProxyFallback<String>(
+        label: 'WebVPN CAS 登录',
+        request: (dio) => dio.post<String>(
+          loginUri,
+          data: {
+            'username': username,
+            'password': encryptedPassword,
+            'veriyCode': captcha,
+            if (lt != null && lt.isNotEmpty) 'lt': lt,
+            'execution': execution,
+            '_eventId': 'submit',
+          },
+          options: Options(
+            contentType: 'application/x-www-form-urlencoded',
+            responseType: ResponseType.plain,
+            followRedirects: false,
+            validateStatus: (s) => s != null && s < 1000,
+            headers: {'Referer': loginUri, 'Origin': _webVpnBase},
+          ),
         ),
       );
 
@@ -529,6 +610,7 @@ class ZhengfangAuth extends ChangeNotifier {
           _cachedCasExecution = null;
           _cachedCasLt = null;
           _cachedCasLoginUrl = null;
+          markWebVpnLoggedIn();
           AppLogger.instance.info('WebVPN CAS 认证成功，正在同步 Cookie...');
           await syncWebVpnCookiesToWebView();
           AppLogger.instance.info('WebVPN CAS 认证成功，Cookie 同步完成');
@@ -642,7 +724,7 @@ class ZhengfangAuth extends ChangeNotifier {
 
     for (final uri in uris) {
       try {
-        final cookies = await _cookieJar.loadForRequest(uri);
+        final cookies = await _webVpnCookieJar.loadForRequest(uri);
         AppLogger.instance.debug(
           '同步 WebVPN Cookie ${uri.host}: ${cookies.map((c) => c.name).join(', ')}',
         );
@@ -719,7 +801,9 @@ class ZhengfangAuth extends ChangeNotifier {
 
     final resolvedUrl = resolvePortalUrl(targetUrl);
     final uri = Uri.parse(resolvedUrl);
-    final cookies = await _cookieJar.loadForRequest(uri);
+    final cookies =
+        await (_mode == ZhengfangMode.webVpn ? _webVpnCookieJar : _cookieJar)
+            .loadForRequest(uri);
     final cookieHeader = cookies
         .map((cookie) => '${cookie.name}=${cookie.value}')
         .join('; ');
@@ -754,14 +838,17 @@ class ZhengfangAuth extends ChangeNotifier {
     final indexUrl = '$_baseUrl/xtgl/index_initMenu.html';
 
     try {
-      final response = await _dio.get<String>(
-        indexUrl,
-        queryParameters: {'jsdm': 'xs'},
-        options: Options(
-          responseType: ResponseType.plain,
-          followRedirects: false,
-          validateStatus: (status) => status != null && status < 1000,
-          headers: {'Referer': _loginPageUrl},
+      final response = await _sendWithProxyFallback<String>(
+        label: '教务会话校验',
+        request: (dio) => dio.get<String>(
+          indexUrl,
+          queryParameters: {'jsdm': 'xs'},
+          options: Options(
+            responseType: ResponseType.plain,
+            followRedirects: false,
+            validateStatus: (status) => status != null && status < 1000,
+            headers: {'Referer': _loginPageUrl},
+          ),
         ),
       );
 
@@ -803,13 +890,16 @@ class ZhengfangAuth extends ChangeNotifier {
     final probeUrl = buildWebVpnProxyUrl(targetUrl);
 
     try {
-      final response = await _dio.get<String>(
-        probeUrl,
-        options: Options(
-          responseType: ResponseType.plain,
-          followRedirects: false,
-          validateStatus: (status) => status != null && status < 1000,
-          headers: {'Referer': '$_webVpnBase/'},
+      final response = await _sendWithProxyFallback<String>(
+        label: 'WebVPN 目标会话校验',
+        request: (dio) => dio.get<String>(
+          probeUrl,
+          options: Options(
+            responseType: ResponseType.plain,
+            followRedirects: false,
+            validateStatus: (status) => status != null && status < 1000,
+            headers: {'Referer': '$_webVpnBase/'},
+          ),
         ),
       );
 
@@ -829,7 +919,7 @@ class ZhengfangAuth extends ChangeNotifier {
       if (redirectedToLogin || landedOnLogin) {
         // 如果 WebVPN CAS 已认证，CAS SSO 可能能自动完成重定向链，
         // 跟随重定向确认是否能到达目标页面
-        if (_sessionActive &&
+        if (isWebVpnLoggedIn &&
             redirectedToLogin &&
             resolvedLocation.toLowerCase().contains('/cas/login')) {
           AppLogger.instance.debug(
@@ -838,13 +928,16 @@ class ZhengfangAuth extends ChangeNotifier {
           try {
             await _followWebVpnRedirectChain(probeUrl, resolvedLocation);
             // SSO 重定向链走完后再次探测目标
-            final retryResp = await _dio.get<String>(
-              probeUrl,
-              options: Options(
-                responseType: ResponseType.plain,
-                followRedirects: true,
-                validateStatus: (status) => status != null && status < 1000,
-                headers: {'Referer': '$_webVpnBase/'},
+            final retryResp = await _sendWithProxyFallback<String>(
+              label: 'WebVPN 目标会话二次校验',
+              request: (dio) => dio.get<String>(
+                probeUrl,
+                options: Options(
+                  responseType: ResponseType.plain,
+                  followRedirects: true,
+                  validateStatus: (status) => status != null && status < 1000,
+                  headers: {'Referer': '$_webVpnBase/'},
+                ),
               ),
             );
             final retryLandedOnLogin = isZhengfangLoginEntryUrl(
@@ -888,13 +981,16 @@ class ZhengfangAuth extends ChangeNotifier {
     }
     for (var i = 0; i < 8; i++) {
       AppLogger.instance.debug('WebVPN CAS 重定向 [$i]: $nextUrl');
-      final resp = await _dio.get<String>(
-        nextUrl,
-        options: Options(
-          responseType: ResponseType.plain,
-          followRedirects: false,
-          validateStatus: (s) => s != null && s < 1000,
-          headers: {'Referer': referer},
+      final resp = await _sendWithProxyFallback<String>(
+        label: 'WebVPN CAS 重定向链',
+        request: (dio) => dio.get<String>(
+          nextUrl,
+          options: Options(
+            responseType: ResponseType.plain,
+            followRedirects: false,
+            validateStatus: (s) => s != null && s < 1000,
+            headers: {'Referer': referer},
+          ),
         ),
       );
       final redirect = resp.headers.value('location') ?? '';
@@ -932,12 +1028,15 @@ class ZhengfangAuth extends ChangeNotifier {
     AppLogger.instance.debug(
       '正在获取教务系统验证码 [${_mode == ZhengfangMode.direct ? "直连" : "WebVPN"}]...',
     );
-    final resp = await _dio.get<List<int>>(
-      '$_baseUrl/kaptcha',
-      queryParameters: {'time': ts},
-      options: Options(
-        responseType: ResponseType.bytes,
-        headers: {'Referer': _loginPageUrl},
+    final resp = await _sendWithProxyFallback<List<int>>(
+      label: '教务验证码',
+      request: (dio) => dio.get<List<int>>(
+        '$_baseUrl/kaptcha',
+        queryParameters: {'time': ts},
+        options: Options(
+          responseType: ResponseType.bytes,
+          headers: {'Referer': _loginPageUrl},
+        ),
       ),
     );
 
@@ -1001,14 +1100,17 @@ class ZhengfangAuth extends ChangeNotifier {
       }
 
       AppLogger.instance.debug('正在获取 RSA 公钥...');
-      final keyResp = await _dio.get<Map<String, dynamic>>(
-        '$_baseUrl/xtgl/login_getPublicKey.html',
-        queryParameters: {'time': ts},
-        options: Options(
-          headers: {
-            'Referer': _loginPageUrl,
-            'X-Requested-With': 'XMLHttpRequest',
-          },
+      final keyResp = await _sendWithProxyFallback<Map<String, dynamic>>(
+        label: '教务登录公钥',
+        request: (dio) => dio.get<Map<String, dynamic>>(
+          '$_baseUrl/xtgl/login_getPublicKey.html',
+          queryParameters: {'time': ts},
+          options: Options(
+            headers: {
+              'Referer': _loginPageUrl,
+              'X-Requested-With': 'XMLHttpRequest',
+            },
+          ),
         ),
       );
       final publicKeyRedirect = keyResp.headers.value('location') ?? '';
@@ -1027,30 +1129,36 @@ class ZhengfangAuth extends ChangeNotifier {
 
       final encryptedPwd = _encryptPassword(password, modulus, exponent);
 
-      await _dio.post<void>(
-        '$_baseUrl/xtgl/login_logoutAccount.html',
-        options: Options(
-          headers: {'Referer': _loginPageUrl, 'Origin': _origin},
+      await _sendWithProxyFallback<void>(
+        label: '教务登出旧会话',
+        request: (dio) => dio.post<void>(
+          '$_baseUrl/xtgl/login_logoutAccount.html',
+          options: Options(
+            headers: {'Referer': _loginPageUrl, 'Origin': _origin},
+          ),
         ),
       );
 
       AppLogger.instance.debug('正在发送教务系统登录请求...');
-      final loginResp = await _dio.post<String>(
-        '$_baseUrl/xtgl/login_slogin.html',
-        queryParameters: {'time': ts},
-        data: {
-          'csrftoken': csrftoken,
-          'language': 'zh_CN',
-          'yhm': username,
-          'mm': encryptedPwd,
-          'yzm': captcha,
-        },
-        options: Options(
-          contentType: 'application/x-www-form-urlencoded',
-          followRedirects: false,
-          responseType: ResponseType.plain,
-          validateStatus: (s) => s != null && s < 400,
-          headers: {'Referer': _loginPageUrl, 'Origin': _origin},
+      final loginResp = await _sendWithProxyFallback<String>(
+        label: '教务登录',
+        request: (dio) => dio.post<String>(
+          '$_baseUrl/xtgl/login_slogin.html',
+          queryParameters: {'time': ts},
+          data: {
+            'csrftoken': csrftoken,
+            'language': 'zh_CN',
+            'yhm': username,
+            'mm': encryptedPwd,
+            'yzm': captcha,
+          },
+          options: Options(
+            contentType: 'application/x-www-form-urlencoded',
+            followRedirects: false,
+            responseType: ResponseType.plain,
+            validateStatus: (s) => s != null && s < 400,
+            headers: {'Referer': _loginPageUrl, 'Origin': _origin},
+          ),
         ),
       );
 
@@ -1087,6 +1195,16 @@ class ZhengfangAuth extends ChangeNotifier {
 
   bool get isLoggedIn => _sessionActive;
 
+  bool get isWebVpnLoggedIn => _webVpnSessionActive;
+
+  void markWebVpnLoggedIn() {
+    _webVpnSessionActive = true;
+  }
+
+  void markWebVpnLoggedOut() {
+    _webVpnSessionActive = false;
+  }
+
   void markLoggedIn() {
     _sessionActive = true;
     if (currentStudentId != null) {
@@ -1118,7 +1236,7 @@ class ZhengfangAuth extends ChangeNotifier {
     try {
       await _dio.post<void>('$_baseUrl/xtgl/login_logoutAccount.html');
     } catch (_) {}
-    await _cookieJar.deleteAll();
+    await _clearZhengfangCookies();
     _sessionActive = false;
     currentStudentId = null;
     _cachedCsrfToken = null;
@@ -1127,9 +1245,33 @@ class ZhengfangAuth extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> logoutWebVpn() async {
+    await DioClient.instance.ensureInitialized();
+    await _webVpnCookieJar.deleteAll();
+    markWebVpnLoggedOut();
+    notifyListeners();
+  }
+
   Future<void> _refreshLoginContext() async {
     AppLogger.instance.debug('正在刷新教务系统登录上下文...');
     await _refreshCsrfToken();
+  }
+
+  Future<void> _clearZhengfangCookies() async {
+    final uris = [
+      Uri.parse('$_directOrigin/'),
+      Uri.parse('$_directOrigin$_directLoginPath'),
+      Uri.parse('$_directBase/'),
+      Uri.parse('$_directOrigin$_directIndexPath?jsdm=xs'),
+      Uri.parse('$_webVpnBase$_webVpnJwglxtPrefix/'),
+      Uri.parse(_loginPageUrl),
+    ];
+
+    for (final uri in uris) {
+      final cookies = await _cookieJar.loadForRequest(uri);
+      if (cookies.isEmpty) continue;
+      await _cookieJar.delete(uri);
+    }
   }
 
   Future<void> _clearWebViewCookiesForUri(
@@ -1182,11 +1324,14 @@ class ZhengfangAuth extends ChangeNotifier {
   Future<String> _refreshCsrfToken() async {
     AppLogger.instance.debug('正在获取 CSRF Token...');
     _contextIndicatesLoggedIn = false;
-    final pageResp = await _dio.get<String>(
-      '$_baseUrl/xtgl/login_slogin.html',
-      options: Options(
-        responseType: ResponseType.plain,
-        headers: {'Referer': _loginPageUrl},
+    final pageResp = await _sendWithProxyFallback<String>(
+      label: '教务登录页上下文',
+      request: (dio) => dio.get<String>(
+        '$_baseUrl/xtgl/login_slogin.html',
+        options: Options(
+          responseType: ResponseType.plain,
+          headers: {'Referer': _loginPageUrl},
+        ),
       ),
     );
 
@@ -1199,16 +1344,19 @@ class ZhengfangAuth extends ChangeNotifier {
     }
     if (_isLoginSuccess(statusCode, location, '')) {
       AppLogger.instance.info('检测到 302 重定向到首页，旧会话可能已过期，清除 Cookie 后重新获取登录页');
-      await _cookieJar.deleteAll();
+      await _clearZhengfangCookies();
       _sessionActive = false;
       _cachedCsrfToken = null;
       notifyListeners();
 
-      final retryResp = await _dio.get<String>(
-        '$_baseUrl/xtgl/login_slogin.html',
-        options: Options(
-          responseType: ResponseType.plain,
-          headers: {'Referer': _loginPageUrl},
+      final retryResp = await _sendWithProxyFallback<String>(
+        label: '教务登录页上下文重试',
+        request: (dio) => dio.get<String>(
+          '$_baseUrl/xtgl/login_slogin.html',
+          options: Options(
+            responseType: ResponseType.plain,
+            headers: {'Referer': _loginPageUrl},
+          ),
         ),
       );
 

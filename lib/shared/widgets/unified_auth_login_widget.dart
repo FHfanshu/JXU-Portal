@@ -65,6 +65,8 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
   UnifiedAuthMode _mode = UnifiedAuthMode.direct;
   bool _autoDetecting = true;
 
+  static const _proxyHint = '请求超时，请检查手机系统代理或 VPN 软件';
+
   @override
   void initState() {
     super.initState();
@@ -204,11 +206,15 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
       if (!mounted) return;
       setState(() {
         _captchaBytes = null;
-        if (e.type == DioExceptionType.connectionError ||
-            e.type == DioExceptionType.connectionTimeout) {
+        if (e.type == DioExceptionType.connectionTimeout ||
+            e.type == DioExceptionType.receiveTimeout) {
           _error = _mode == UnifiedAuthMode.direct
-              ? '无法连接统一认证，请检查网络'
-              : '无法连接 WebVPN，请检查网络';
+              ? '$_proxyHint，然后重试统一认证'
+              : '$_proxyHint，然后重试 WebVPN 登录';
+        } else if (e.type == DioExceptionType.connectionError) {
+          _error = _mode == UnifiedAuthMode.direct
+              ? '无法连接统一认证，请检查网络或系统代理设置'
+              : '无法连接 WebVPN，请检查网络或系统代理设置';
         } else {
           _error = '网络错误：${e.message ?? "请稍后重试"}';
         }
@@ -473,8 +479,8 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
         GestureDetector(
           onTap: _refreshCaptcha,
           child: Container(
-            width: 120,
-            height: 58,
+            width: 140,
+            height: 72,
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(16),
@@ -488,13 +494,13 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
               child: _captchaBytes != null
                   ? Padding(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
+                        horizontal: 4,
                         vertical: 6,
                       ),
                       child: Image.memory(
                         _captchaBytes!,
                         fit: BoxFit.contain,
-                        filterQuality: FilterQuality.medium,
+                        filterQuality: FilterQuality.high,
                       ),
                     )
                   : _error != null
