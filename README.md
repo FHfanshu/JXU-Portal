@@ -65,3 +65,5 @@ android/       # Android 工程脚手架
 - `Claude Code`
 - `OpenCode`
 - `Codex`
+## 灵感来源
+- 电表app
