@@ -17,7 +17,7 @@ class AcademicSystemLoginPage extends StatelessWidget {
         topSafeArea: false,
         child: LoginWidget(
           showHeader: false,
-          padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+          padding: EdgeInsets.zero,
           onLoginSuccess: () => Navigator.of(context).pop(true),
         ),
       ),

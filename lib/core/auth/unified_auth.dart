@@ -111,6 +111,54 @@ class UnifiedAuthService extends ChangeNotifier {
   UnifiedAuthService._();
   static final UnifiedAuthService instance = UnifiedAuthService._();
 
+  static Future<bool> checkDirectReachable() async {
+    try {
+      final dio = Dio(
+        BaseOptions(
+          connectTimeout: const Duration(seconds: 3),
+          receiveTimeout: const Duration(seconds: 3),
+          followRedirects: false,
+          validateStatus: (s) => s != null && s < 500,
+        ),
+      );
+      AppLogger.instance.debug('正在测试统一认证直连...');
+      final resp = await dio.get<String>(
+        '$_newcaOrigin/cas/login',
+        queryParameters: {'service': defaultServiceUrl},
+      );
+      final statusCode = resp.statusCode ?? 0;
+      final reachable = statusCode > 0 && statusCode < 500;
+      AppLogger.instance.info(
+        '统一认证直连: ${reachable ? "可达" : "不可达"} ($statusCode)',
+      );
+      return reachable;
+    } catch (e) {
+      AppLogger.instance.info('统一认证直连不可达: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> checkWebVpnReachable() async {
+    try {
+      final dio = Dio(
+        BaseOptions(
+          connectTimeout: const Duration(seconds: 3),
+          receiveTimeout: const Duration(seconds: 3),
+          followRedirects: true,
+          validateStatus: (s) => s != null && s < 500,
+        ),
+      );
+      AppLogger.instance.debug('正在测试统一认证 WebVPN 连通性...');
+      final resp = await dio.get<String>('$_webVpnOrigin/login');
+      final reachable = resp.statusCode != null && resp.statusCode! < 400;
+      AppLogger.instance.info('统一认证 WebVPN: ${reachable ? "可达" : "不可达"}');
+      return reachable;
+    } catch (e) {
+      AppLogger.instance.info('统一认证 WebVPN 不可达: $e');
+      return false;
+    }
+  }
+
   static const defaultServiceUrl =
       'https://newca.zjxu.edu.cn/casClient/login/ydd';
 

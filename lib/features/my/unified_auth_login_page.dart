@@ -19,7 +19,7 @@ class UnifiedAuthLoginPage extends StatelessWidget {
           title: '登录统一认证',
           description: '登录后可进入一卡通、服务大厅等服务',
           showHeader: false,
-          padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+          padding: EdgeInsets.zero,
           onLoginSuccess: () => Navigator.of(context).pop(true),
         ),
       ),

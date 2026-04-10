@@ -1,15 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../app/theme.dart';
 import '../../core/auth/unified_auth.dart';
 import 'login_widget.dart';
 import 'unified_auth_login_widget.dart';
 
-const _kInputRadius = BorderRadius.all(Radius.circular(12));
-
-/// Unified horizontal margin for both banner card and form area.
+const _kInputRadius = BorderRadius.all(Radius.circular(18));
 const double _kHorizontalMargin = 16;
+const double _kFormCardRadius = 28;
 
 class LoginShell extends StatelessWidget {
   const LoginShell({
@@ -31,230 +29,200 @@ class LoginShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    final formBackground = isDark
-        ? const Color(0xFF1A1214)
-        : const Color(0xFFFAFAFA);
-    final inputFill = isDark ? const Color(0xFF2D1F23) : Colors.white;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final pageBackground = theme.scaffoldBackgroundColor;
+    final formSurface = isDark ? const Color(0xFF24191D) : Colors.white;
+    final inputFill = isDark
+        ? const Color(0xFF312429)
+        : const Color(0xFFFFFBFA);
     final inputBorder = isDark
-        ? BorderSide.none
-        : BorderSide(color: Colors.grey.shade200, width: 0.8);
+        ? BorderSide(color: Colors.white.withValues(alpha: 0.06))
+        : const BorderSide(color: Color(0xFFE9E2DF));
     final focusBorder = isDark ? AppColors.primaryLight : AppColors.primary;
+    final formShadow = isDark
+        ? <BoxShadow>[]
+        : [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 24,
+              offset: const Offset(0, 10),
+            ),
+          ];
 
     return Material(
-      color: Theme.of(context).scaffoldBackgroundColor,
+      color: pageBackground,
       child: SafeArea(
         top: topSafeArea,
         bottom: false,
-        child: Column(
-          children: [
-            // Banner card
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                _kHorizontalMargin,
-                12,
-                _kHorizontalMargin,
-                0,
+        child: Theme(
+          data: theme.copyWith(
+            inputDecorationTheme: InputDecorationTheme(
+              filled: true,
+              fillColor: inputFill,
+              border: OutlineInputBorder(
+                borderRadius: _kInputRadius,
+                borderSide: inputBorder,
               ),
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      AppColors.primaryDark,
-                      AppColors.primary,
-                      AppColors.primaryLight,
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(16),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: _kInputRadius,
+                borderSide: inputBorder,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: _kInputRadius,
+                borderSide: BorderSide(color: focusBorder, width: 1.6),
+              ),
+              errorBorder: OutlineInputBorder(
+                borderRadius: _kInputRadius,
+                borderSide: BorderSide(color: Colors.red.shade300),
+              ),
+              focusedErrorBorder: OutlineInputBorder(
+                borderRadius: _kInputRadius,
+                borderSide: BorderSide(color: Colors.red.shade300, width: 1.6),
+              ),
+              prefixIconColor: isDark
+                  ? Colors.white70
+                  : const Color(0xFF8D837E),
+              prefixIconConstraints: const BoxConstraints(
+                minWidth: 54,
+                minHeight: 54,
+              ),
+              hintStyle: TextStyle(
+                color: isDark ? Colors.white38 : const Color(0xFFAEA39D),
+                fontSize: 16,
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 18,
+                vertical: 17,
+              ),
+            ),
+            filledButtonTheme: FilledButtonThemeData(
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 54),
+                padding: const EdgeInsets.symmetric(vertical: 15),
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
                 ),
-                child: Stack(
-                  children: [
-                    Positioned(
-                      left: -32,
-                      bottom: -44,
-                      child: Container(
-                        width: 128,
-                        height: 128,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white.withValues(alpha: 0.08),
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      right: -28,
-                      top: -24,
-                      child: Opacity(
-                        opacity: 0.08,
-                        child: SvgPicture.asset(
-                          'assets/header_texture.svg',
-                          width: 150,
-                          height: 150,
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 22),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Container(
-                                width: 44,
-                                height: 44,
-                                padding: const EdgeInsets.all(6),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                child: SvgPicture.asset(
-                                  'assets/header_texture.svg',
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              if (badgeText != null)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 5,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                  child: Text(
-                                    badgeText!,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ),
-                              const Spacer(),
-                              if (onClose != null)
-                                SizedBox(
-                                  width: 36,
-                                  height: 36,
-                                  child: IconButton(
-                                    onPressed: onClose,
-                                    icon: const Icon(
-                                      Icons.close,
-                                      color: Colors.white,
-                                      size: 20,
-                                    ),
-                                    tooltip: '关闭',
-                                    padding: EdgeInsets.zero,
-                                    visualDensity: VisualDensity.compact,
-                                  ),
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: 18),
-                          Text(
-                            title,
-                            style: Theme.of(context).textTheme.headlineSmall
-                                ?.copyWith(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            description,
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(
-                                  color: Colors.white.withValues(alpha: 0.75),
-                                  height: 1.4,
-                                ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                textStyle: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0,
                 ),
               ),
             ),
+          ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              const verticalPadding = 24.0;
+              final minHeight = constraints.maxHeight - verticalPadding - 28;
 
-            // Form area - vertically centered
-            Expanded(
-              child: Container(
-                color: formBackground,
-                child: Theme(
-                  data: Theme.of(context).copyWith(
-                    inputDecorationTheme: InputDecorationTheme(
-                      filled: true,
-                      fillColor: inputFill,
-                      border: OutlineInputBorder(
-                        borderRadius: _kInputRadius,
-                        borderSide: inputBorder,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: _kInputRadius,
-                        borderSide: inputBorder,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: _kInputRadius,
-                        borderSide: BorderSide(color: focusBorder, width: 1.5),
-                      ),
-                      errorBorder: OutlineInputBorder(
-                        borderRadius: _kInputRadius,
-                        borderSide: BorderSide(color: Colors.red.shade300),
-                      ),
-                      focusedErrorBorder: OutlineInputBorder(
-                        borderRadius: _kInputRadius,
-                        borderSide: BorderSide(
-                          color: Colors.red.shade300,
-                          width: 1.5,
-                        ),
-                      ),
-                      prefixIconColor: Colors.grey[600],
-                      hintStyle: TextStyle(color: Colors.grey[500]),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
-                      ),
-                    ),
-                    filledButtonTheme: FilledButtonThemeData(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size(double.infinity, 50),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        textStyle: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.3,
-                        ),
-                      ),
-                    ),
+              return SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(
+                  _kHorizontalMargin,
+                  verticalPadding,
+                  _kHorizontalMargin,
+                  28,
+                ),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: minHeight > 0 ? minHeight : 0,
                   ),
                   child: Center(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(
-                        _kHorizontalMargin,
-                        20,
-                        _kHorizontalMargin,
-                        32,
-                      ),
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 400),
-                        child: child,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 420),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: formSurface,
+                          borderRadius: BorderRadius.circular(_kFormCardRadius),
+                          border: Border.all(
+                            color: isDark
+                                ? Colors.white.withValues(alpha: 0.08)
+                                : const Color(0xFFF0E7E4),
+                          ),
+                          boxShadow: formShadow,
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(24, 22, 24, 20),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              if (badgeText != null || onClose != null)
+                                Row(
+                                  children: [
+                                    if (badgeText != null)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 7,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.primary.withValues(
+                                            alpha: isDark ? 0.18 : 0.08,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            999,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          badgeText!,
+                                          style: theme.textTheme.labelLarge
+                                              ?.copyWith(
+                                                color: AppColors.primary,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                        ),
+                                      ),
+                                    const Spacer(),
+                                    if (onClose != null)
+                                      IconButton(
+                                        onPressed: onClose,
+                                        tooltip: '关闭',
+                                        style: IconButton.styleFrom(
+                                          backgroundColor:
+                                              colorScheme.surfaceContainerHigh,
+                                          foregroundColor:
+                                              colorScheme.onSurfaceVariant,
+                                        ),
+                                        icon: const Icon(Icons.close, size: 20),
+                                      ),
+                                  ],
+                                ),
+                              if (badgeText != null || onClose != null)
+                                const SizedBox(height: 20),
+                              Text(
+                                title,
+                                style: theme.textTheme.headlineSmall?.copyWith(
+                                  color: colorScheme.onSurface,
+                                  fontWeight: FontWeight.w800,
+                                  height: 1.12,
+                                  letterSpacing: -0.3,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                description,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
+                                  height: 1.5,
+                                ),
+                              ),
+                              const SizedBox(height: 24),
+                              child,
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            ),
-          ],
+              );
+            },
+          ),
         ),
       ),
     );
@@ -266,6 +234,7 @@ Future<bool> showUnifiedAuthLoginModal(
   String title = '登录统一认证',
   String description = '登录后可进入一卡通、服务大厅等服务',
   String serviceUrl = UnifiedAuthService.defaultServiceUrl,
+  bool forceWebVpn = false,
   bool barrierDismissible = true,
 }) async {
   final result = await showGeneralDialog<bool>(
@@ -287,6 +256,7 @@ Future<bool> showUnifiedAuthLoginModal(
           serviceUrl: serviceUrl,
           title: title,
           description: description,
+          forceWebVpn: forceWebVpn,
           showHeader: false,
           padding: EdgeInsets.zero,
           onLoginSuccess: () =>

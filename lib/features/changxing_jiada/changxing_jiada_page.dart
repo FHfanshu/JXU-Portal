@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../shared/widgets/webvpn_cas_login_widget.dart';
+import '../../shared/widgets/login_shell.dart';
 import 'changxing_jiada_model.dart';
 import 'changxing_jiada_service.dart';
 
@@ -26,7 +26,7 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
 
   bool get _loggedIn => _service.hasToken && _profile != null;
 
-  /// 是否需要先登录一卡通 WebVPN（CAS 未登录时显示一卡通登录表单）
+  /// 是否需要先登录一卡通（CAS 未登录时显示一卡通认证提示）
   bool _needWebVpnAuth = false;
 
   @override
@@ -122,9 +122,16 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
     }
   }
 
-  void _onWebVpnAuthSuccess() {
+  Future<void> _promptCasLogin() async {
+    final loggedIn = await showUnifiedAuthLoginModal(
+      context,
+      title: '登录一卡通',
+      description: '畅行嘉大需要先完成一卡通认证',
+      forceWebVpn: true,
+      barrierDismissible: false,
+    );
+    if (!mounted || !loggedIn) return;
     setState(() => _needWebVpnAuth = false);
-    // 一卡通登录成功后，自动进行 CAS SSO
     _loginViaCas();
   }
 
@@ -158,10 +165,42 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
 
   Widget _buildLoginBody() {
     if (_needWebVpnAuth) {
-      return WebVpnCasLoginWidget(
-        title: '登录一卡通',
-        description: '畅行嘉大需要先登录一卡通账号',
-        onLoginSuccess: _onWebVpnAuthSuccess,
+      final cs = Theme.of(context).colorScheme;
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.vpn_lock_outlined,
+                size: 48,
+                color: cs.primary.withValues(alpha: 0.6),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '需要一卡通认证',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '畅行嘉大需要先完成一卡通认证',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                onPressed: _promptCasLogin,
+                icon: const Icon(Icons.login),
+                label: const Text('一卡通认证'),
+              ),
+            ],
+          ),
+        ),
       );
     }
 
