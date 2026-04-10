@@ -61,7 +61,7 @@ android/       # Android 工程脚手架
 ## 致谢
 
 - `FHfanshu`
-- 学校 H5 基础设施开发者：为校园服务相关 H5 能力建设与流程梳理提供了重要参考
+- `学校 H5 基础设施开发者：为校园服务相关 H5 能力建设与流程梳理提供了重要参考`
 - `Claude Code`
 - `OpenCode`
 - `Codex`
