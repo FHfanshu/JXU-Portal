@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/logging/app_logger.dart';
-import 'login_widget.dart';
+import 'auth_required_view.dart';
+import 'login_shell.dart';
 import 'webview_page.dart';
 
 bool isZhengfangLoginUrl(String currentUrl) {
@@ -36,6 +39,8 @@ class _ZhengfangProtectedWebViewPageState
   bool _recoveryAttempted = false;
   Key _webViewKey = UniqueKey();
   Map<String, String> _initialHeaders = const {};
+  bool _loginPromptShown = false;
+  bool _loginPromptInFlight = false;
 
   @override
   void initState() {
@@ -43,21 +48,31 @@ class _ZhengfangProtectedWebViewPageState
     _authenticated = ZhengfangAuth.instance.isLoggedIn;
     if (_authenticated) {
       _prepareWebViewSession();
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        unawaited(_showNativeLogin());
+      });
     }
-  }
-
-  Future<void> _onLoginSuccess() async {
-    await _prepareWebViewSession(recreateWebView: true);
   }
 
   Future<void> _showNativeLogin() async {
     ZhengfangAuth.instance.markLoggedOut();
-    if (!mounted) return;
-    setState(() {
-      _authenticated = false;
-      _preparingSession = false;
-      _recoveryAttempted = false;
-    });
+    if (mounted) {
+      setState(() {
+        _authenticated = false;
+        _preparingSession = false;
+        _recoveryAttempted = false;
+      });
+    }
+
+    if (!mounted || _loginPromptInFlight) return;
+    _loginPromptShown = true;
+    _loginPromptInFlight = true;
+    final loggedIn = await showAcademicSystemLoginModal(context);
+    _loginPromptInFlight = false;
+    if (!mounted || !loggedIn) return;
+    await _prepareWebViewSession(recreateWebView: true);
   }
 
   Future<void> _handleLoadStop(
@@ -140,9 +155,22 @@ class _ZhengfangProtectedWebViewPageState
       );
     }
 
+    if (!_loginPromptShown && !_loginPromptInFlight) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        unawaited(_showNativeLogin());
+      });
+    }
+
     return Scaffold(
       appBar: AppBar(title: Text(widget.title)),
-      body: LoginWidget(onLoginSuccess: _onLoginSuccess),
+      body: AuthRequiredView(
+        title: '需要登录后继续',
+        message: widget.loginDescription,
+        buttonLabel: '登录教务系统',
+        onAction: _showNativeLogin,
+        icon: Icons.school_outlined,
+      ),
     );
   }
 }

@@ -8,6 +8,9 @@ import '../../core/logging/app_logger.dart';
 import '../../core/network/dio_client.dart';
 import '../../core/network/network_settings.dart';
 import '../../core/semester/semester_calendar.dart';
+import '../../core/update/update_checker.dart';
+import '../../core/update/update_model.dart';
+import '../../shared/widgets/update_dialog.dart';
 import '../dorm_electricity/dorm_electricity_service.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -46,6 +49,32 @@ class SettingsPage extends StatelessWidget {
       DioClient.instance.applyProxyMode();
       DormElectricityService.instance.applyProxyMode();
     });
+  }
+
+  Future<void> _checkForUpdate(BuildContext context) async {
+    final result = await UpdateChecker.instance.check();
+    if (!context.mounted) return;
+
+    switch (result.status) {
+      case UpdateCheckStatus.updateAvailable:
+        final release = result.release;
+        if (release != null) {
+          await showUpdateDialog(context, release);
+        }
+        break;
+      case UpdateCheckStatus.upToDate:
+        ScaffoldMessenger.maybeOf(
+          context,
+        )?.showSnackBar(const SnackBar(content: Text('当前已是最新版本')));
+        break;
+      case UpdateCheckStatus.error:
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          const SnackBar(content: Text('检查更新失败，请检查 GitHub 访问或系统代理')),
+        );
+        break;
+      case UpdateCheckStatus.checking:
+        break;
+    }
   }
 
   @override
@@ -236,6 +265,56 @@ class SettingsPage extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Text('设置会立即生效。', style: textTheme.bodySmall),
+          const SizedBox(height: 24),
+          Text('版本', style: textTheme.titleMedium),
+          const SizedBox(height: 12),
+          FutureBuilder<PackageInfo>(
+            future: PackageInfo.fromPlatform(),
+            builder: (context, snapshot) {
+              final version = snapshot.hasData
+                  ? '当前版本 v${snapshot.data!.version}+${snapshot.data!.buildNumber}'
+                  : '手动检测 GitHub Release 新版本';
+              return ValueListenableBuilder<AppRelease?>(
+                valueListenable: UpdateChecker.instance.availableRelease,
+                builder: (context, release, child) {
+                  return ValueListenableBuilder<bool>(
+                    valueListenable: UpdateChecker.instance.isChecking,
+                    builder: (context, isChecking, child) {
+                      final subtitle = release != null
+                          ? '发现新版本 v${release.version}'
+                          : version;
+                      return Card(
+                        clipBehavior: Clip.antiAlias,
+                        child: ListTile(
+                          leading: const Icon(Icons.system_update_outlined),
+                          title: const Text('检查更新'),
+                          subtitle: Text(subtitle),
+                          trailing: isChecking
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : Icon(
+                                  release != null
+                                      ? Icons.new_releases_outlined
+                                      : Icons.chevron_right,
+                                ),
+                          onTap: isChecking
+                              ? null
+                              : () {
+                                  _checkForUpdate(context);
+                                },
+                        ),
+                      );
+                    },
+                  );
+                },
+              );
+            },
+          ),
           const SizedBox(height: 24),
           FutureBuilder<PackageInfo>(
             future: PackageInfo.fromPlatform(),

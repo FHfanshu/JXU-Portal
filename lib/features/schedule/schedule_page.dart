@@ -1,10 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../app/theme.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/semester/semester_calendar.dart';
-import '../../shared/widgets/login_widget.dart';
+import '../../shared/widgets/auth_required_view.dart';
+import '../../shared/widgets/login_shell.dart';
 import 'schedule_cache_snapshot.dart';
 import 'schedule_model.dart';
 import 'schedule_service.dart';
@@ -33,6 +36,8 @@ class _SchedulePageState extends State<SchedulePage> {
   DateTime? _scheduleUpdatedAt;
   late final PageController _weekPageController;
   final Map<int, ScheduleWeekViewModel> _weekViewModels = {};
+  bool _loginPromptShown = false;
+  bool _loginPromptInFlight = false;
 
   int get _currentWeek => SemesterCalendar.instance.weekForDate(DateTime.now());
 
@@ -44,19 +49,45 @@ class _SchedulePageState extends State<SchedulePage> {
     _displayWeek = _currentWeek;
     _weekPageController = PageController(initialPage: _displayWeek - 1);
     _loggedIn = ZhengfangAuth.instance.isLoggedIn;
+    ZhengfangAuth.instance.addListener(_handleAuthChanged);
     _restoreCachedSnapshot();
     if (_loggedIn || _courses.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         _fetchSchedule();
       });
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        unawaited(_presentLoginPrompt());
+      });
     }
   }
 
   @override
   void dispose() {
+    ZhengfangAuth.instance.removeListener(_handleAuthChanged);
     _weekPageController.dispose();
     super.dispose();
+  }
+
+  void _handleAuthChanged() {
+    final nextLoggedIn = ZhengfangAuth.instance.isLoggedIn;
+    if (!mounted || nextLoggedIn == _loggedIn) return;
+
+    setState(() {
+      _loggedIn = nextLoggedIn;
+      if (!nextLoggedIn) {
+        _infoMessage = _courses.isNotEmpty ? '登录状态已失效，请重新登录教务' : null;
+      }
+    });
+
+    if (!nextLoggedIn) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        unawaited(_presentLoginPrompt(force: true));
+      });
+    }
   }
 
   void _onWeekPageChanged(int index) {
@@ -202,6 +233,18 @@ class _SchedulePageState extends State<SchedulePage> {
     _fetchSchedule(forceRefresh: true);
   }
 
+  Future<void> _presentLoginPrompt({bool force = false}) async {
+    if (!mounted || _loginPromptInFlight || _loggedIn) return;
+    if (!force && _loginPromptShown) return;
+
+    _loginPromptShown = true;
+    _loginPromptInFlight = true;
+    final loggedIn = await showAcademicSystemLoginModal(context);
+    _loginPromptInFlight = false;
+    if (!mounted || !loggedIn) return;
+    _onLoginSuccess();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -241,7 +284,13 @@ class _SchedulePageState extends State<SchedulePage> {
     );
   }
 
-  Widget _buildLoginBody() => LoginWidget(onLoginSuccess: _onLoginSuccess);
+  Widget _buildLoginBody() => AuthRequiredView(
+    title: '登录后查看课表',
+    message: '课表刷新依赖教务系统会话，登录后即可同步最新课程数据。',
+    buttonLabel: '登录教务系统',
+    onAction: () => _presentLoginPrompt(force: true),
+    icon: Icons.calendar_month_outlined,
+  );
 
   Widget _buildScheduleBody() {
     if (_loading && _courses.isEmpty) {

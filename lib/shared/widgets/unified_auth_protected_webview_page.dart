@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../../core/auth/unified_auth.dart';
 import '../../core/logging/app_logger.dart';
-import 'unified_auth_login_widget.dart';
+import 'auth_required_view.dart';
+import 'login_shell.dart';
 import 'webview_page.dart';
 
 class UnifiedAuthProtectedWebViewPage extends StatefulWidget {
@@ -42,6 +45,8 @@ class _UnifiedAuthProtectedWebViewPageState
   late bool _authenticated;
   late bool _authResolved;
   bool _resyncing = false;
+  bool _loginPromptShown = false;
+  bool _loginPromptInFlight = false;
 
   @override
   void initState() {
@@ -58,6 +63,34 @@ class _UnifiedAuthProtectedWebViewPageState
     setState(() {
       _authenticated = true;
       _authResolved = true;
+    });
+  }
+
+  Future<void> _presentLoginPrompt({bool force = false}) async {
+    if (!mounted || _loginPromptInFlight || _authenticated) return;
+    if (!force && _loginPromptShown) return;
+
+    _loginPromptShown = true;
+    _loginPromptInFlight = true;
+    final loggedIn = await showUnifiedAuthLoginModal(
+      context,
+      title: '登录统一认证',
+      description: widget.loginDescription,
+      serviceUrl: widget.serviceUrl,
+    );
+    _loginPromptInFlight = false;
+    if (!mounted || !loggedIn) return;
+    _onLoginSuccess();
+  }
+
+  void _scheduleLoginPrompt({bool force = false}) {
+    if (!force &&
+        (_loginPromptShown || _loginPromptInFlight || _authenticated)) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(_presentLoginPrompt(force: force));
     });
   }
 
@@ -85,7 +118,13 @@ class _UnifiedAuthProtectedWebViewPageState
       if (_resyncing || !UnifiedAuthService.instance.isLoggedIn) {
         AppLogger.instance.debug('Cookie 重同步失败，标记登出');
         UnifiedAuthService.instance.markLoggedOut();
-        if (mounted) setState(() => _authenticated = false);
+        if (mounted) {
+          setState(() {
+            _authenticated = false;
+            _authResolved = true;
+          });
+        }
+        await _presentLoginPrompt(force: true);
         return;
       }
 
@@ -161,6 +200,8 @@ class _UnifiedAuthProtectedWebViewPageState
       );
     }
 
+    _scheduleLoginPrompt();
+
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: widget.onHomePressed == null,
@@ -169,11 +210,12 @@ class _UnifiedAuthProtectedWebViewPageState
         title: Text(widget.title),
         actions: widget.appBarActions,
       ),
-      body: UnifiedAuthLoginWidget(
-        serviceUrl: widget.serviceUrl,
-        title: '登录统一认证',
-        description: widget.loginDescription,
-        onLoginSuccess: _onLoginSuccess,
+      body: AuthRequiredView(
+        title: '需要统一认证后继续',
+        message: widget.loginDescription,
+        buttonLabel: '登录统一认证',
+        onAction: () => _presentLoginPrompt(force: true),
+        icon: Icons.account_balance_outlined,
       ),
     );
   }

@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/auth/zhengfang_auth.dart';
-import '../../shared/widgets/login_widget.dart';
+import '../../shared/widgets/auth_required_view.dart';
+import '../../shared/widgets/login_shell.dart';
 import 'grades_model.dart';
 import 'grades_service.dart';
 
@@ -17,12 +20,47 @@ class _GradesPageState extends State<GradesPage> {
   bool _loading = false;
   String? _error;
   List<GradeEntry> _grades = [];
+  bool _loginPromptShown = false;
+  bool _loginPromptInFlight = false;
 
   @override
   void initState() {
     super.initState();
     _loggedIn = ZhengfangAuth.instance.isLoggedIn;
-    if (_loggedIn) _fetchGrades();
+    ZhengfangAuth.instance.addListener(_handleAuthChanged);
+    if (_loggedIn) {
+      _fetchGrades();
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        unawaited(_presentLoginPrompt());
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    ZhengfangAuth.instance.removeListener(_handleAuthChanged);
+    super.dispose();
+  }
+
+  void _handleAuthChanged() {
+    final nextLoggedIn = ZhengfangAuth.instance.isLoggedIn;
+    if (!mounted || nextLoggedIn == _loggedIn) return;
+
+    setState(() {
+      _loggedIn = nextLoggedIn;
+      if (!nextLoggedIn) {
+        _error = _grades.isEmpty ? null : '登录状态已失效，请重新登录后刷新成绩';
+      }
+    });
+
+    if (!nextLoggedIn) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        unawaited(_presentLoginPrompt(force: true));
+      });
+    }
   }
 
   Future<void> _fetchGrades() async {
@@ -42,8 +80,23 @@ class _GradesPageState extends State<GradesPage> {
   }
 
   void _onLoginSuccess() {
-    setState(() => _loggedIn = true);
+    setState(() {
+      _loggedIn = true;
+      _error = null;
+    });
     _fetchGrades();
+  }
+
+  Future<void> _presentLoginPrompt({bool force = false}) async {
+    if (!mounted || _loginPromptInFlight || _loggedIn) return;
+    if (!force && _loginPromptShown) return;
+
+    _loginPromptShown = true;
+    _loginPromptInFlight = true;
+    final loggedIn = await showAcademicSystemLoginModal(context);
+    _loginPromptInFlight = false;
+    if (!mounted || !loggedIn) return;
+    _onLoginSuccess();
   }
 
   // ── GPA summary ─────────────────────────────────────────────────────────────
@@ -93,8 +146,13 @@ class _GradesPageState extends State<GradesPage> {
     );
   }
 
-  Widget _buildLoginBody() =>
-      LoginWidget(onLoginSuccess: _onLoginSuccess);
+  Widget _buildLoginBody() => AuthRequiredView(
+    title: '登录后查看成绩',
+    message: '成绩查询依赖教务系统会话，登录后即可同步最新成绩。',
+    buttonLabel: '登录教务系统',
+    onAction: () => _presentLoginPrompt(force: true),
+    icon: Icons.school_outlined,
+  );
 
   Widget _buildGradesBody() {
     if (_loading) return const Center(child: CircularProgressIndicator());
@@ -124,19 +182,16 @@ class _GradesPageState extends State<GradesPage> {
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
-        _SummaryCard(
-          totalCredits: _totalCredits,
-          weightedGpa: _weightedGpa,
-        ),
+        _SummaryCard(totalCredits: _totalCredits, weightedGpa: _weightedGpa),
         const SizedBox(height: 12),
         for (final entry in grouped.entries) ...[
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
             child: Text(
               entry.key,
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
             ),
           ),
           for (final grade in entry.value)
@@ -150,8 +205,7 @@ class _GradesPageState extends State<GradesPage> {
 // ── Summary Card ──────────────────────────────────────────────────────────────
 
 class _SummaryCard extends StatelessWidget {
-  const _SummaryCard(
-      {required this.totalCredits, required this.weightedGpa});
+  const _SummaryCard({required this.totalCredits, required this.weightedGpa});
   final double totalCredits;
   final double weightedGpa;
 
@@ -183,8 +237,11 @@ class _SummaryCard extends StatelessWidget {
 }
 
 class _StatItem extends StatelessWidget {
-  const _StatItem(
-      {required this.label, required this.value, required this.color});
+  const _StatItem({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
   final String label;
   final String value;
   final Color color;
@@ -193,9 +250,14 @@ class _StatItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Text(value,
-            style: TextStyle(
-                fontSize: 24, fontWeight: FontWeight.bold, color: color)),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
         Text(label, style: TextStyle(fontSize: 12, color: color)),
       ],
     );
@@ -230,10 +292,8 @@ class _GradeCard extends StatelessWidget {
                   Text(
                     '${grade.credits} 学分 · ${grade.assessmentMethod} · ${grade.examType}',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurfaceVariant,
-                        ),
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
@@ -242,8 +302,10 @@ class _GradeCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: color.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
@@ -252,9 +314,10 @@ class _GradeCard extends StatelessWidget {
                   child: Text(
                     grade.grade,
                     style: TextStyle(
-                        color: color,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16),
+                      color: color,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 4),

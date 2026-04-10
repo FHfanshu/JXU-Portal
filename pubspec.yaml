@@ -1,7 +1,7 @@
 name: jiaxing_university_portal
 description: "嘉兴大学-校园门户 App"
 publish_to: 'none'
-version: 1.0.0+1
+version: 0.1.4+2
 
 environment:
   sdk: ^3.11.0

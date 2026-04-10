@@ -11,8 +11,16 @@ import '../../core/logging/app_logger.dart';
 /// Reusable login form widget. Calls [onLoginSuccess] when login succeeds.
 /// 支持直连和 WebVPN 两种模式。
 class LoginWidget extends StatefulWidget {
-  const LoginWidget({super.key, required this.onLoginSuccess});
+  const LoginWidget({
+    super.key,
+    required this.onLoginSuccess,
+    this.showHeader = true,
+    this.padding = const EdgeInsets.all(24),
+  });
+
   final VoidCallback onLoginSuccess;
+  final bool showHeader;
+  final EdgeInsetsGeometry padding;
 
   @override
   State<LoginWidget> createState() => _LoginWidgetState();
@@ -306,36 +314,55 @@ class _LoginWidgetState extends State<LoginWidget> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: widget.padding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const SizedBox(height: 24),
-          Icon(
-            _mode == ZhengfangMode.direct
-                ? Icons.school_outlined
-                : Icons.vpn_lock_outlined,
-            size: 64,
-            color: colorScheme.primary,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '登录正方教务系统',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          if (_mode == ZhengfangMode.webVpn) ...[
-            const SizedBox(height: 4),
+          if (widget.showHeader) ...[
+            const SizedBox(height: 24),
+            Icon(
+              _mode == ZhengfangMode.direct
+                  ? Icons.school_outlined
+                  : Icons.vpn_lock_outlined,
+              size: 64,
+              color: colorScheme.primary,
+            ),
+            const SizedBox(height: 16),
             Text(
-              'WebVPN 模式',
+              '登录正方教务系统',
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: colorScheme.primary,
-                fontWeight: FontWeight.w600,
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            if (_mode == ZhengfangMode.webVpn) ...[
+              const SizedBox(height: 4),
+              Text(
+                'WebVPN 模式',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: colorScheme.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+            const SizedBox(height: 32),
+          ] else if (_mode == ZhengfangMode.webVpn) ...[
+            Container(
+              margin: const EdgeInsets.only(top: 8, bottom: 20),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: colorScheme.primary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                '当前为 WebVPN 登录模式',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: colorScheme.primary,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ],
-          const SizedBox(height: 32),
 
           // ── 网络检测中 ──
           if (_autoDetecting)

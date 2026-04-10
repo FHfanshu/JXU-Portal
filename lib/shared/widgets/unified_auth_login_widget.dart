@@ -26,6 +26,8 @@ class UnifiedAuthLoginWidget extends StatefulWidget {
     this.sessionPreflight,
     this.captchaLoader,
     this.loginHandler,
+    this.showHeader = true,
+    this.padding = const EdgeInsets.all(24),
   });
 
   final VoidCallback onLoginSuccess;
@@ -37,6 +39,8 @@ class UnifiedAuthLoginWidget extends StatefulWidget {
   final LoginSessionPreflight? sessionPreflight;
   final LoginCaptchaLoader? captchaLoader;
   final LoginSubmitHandler? loginHandler;
+  final bool showHeader;
+  final EdgeInsetsGeometry padding;
 
   @override
   State<UnifiedAuthLoginWidget> createState() => _UnifiedAuthLoginWidgetState();
@@ -192,27 +196,29 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
     final cs = Theme.of(context).colorScheme;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: widget.padding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const SizedBox(height: 24),
-          Icon(Icons.account_balance_outlined, size: 64, color: cs.primary),
-          const SizedBox(height: 16),
-          Text(
-            widget.title,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            widget.description,
-            textAlign: TextAlign.center,
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
-          ),
-          const SizedBox(height: 32),
+          if (widget.showHeader) ...[
+            const SizedBox(height: 24),
+            Icon(Icons.account_balance_outlined, size: 64, color: cs.primary),
+            const SizedBox(height: 16),
+            Text(
+              widget.title,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              widget.description,
+              textAlign: TextAlign.center,
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+            ),
+            const SizedBox(height: 32),
+          ],
           TextField(
             controller: _usernameCtrl,
             decoration: const InputDecoration(

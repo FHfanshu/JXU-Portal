@@ -6,8 +6,12 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/app_bootstrap_controller.dart';
 import '../../app/theme.dart';
+import '../../core/auth/unified_auth.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/semester/semester_calendar.dart';
+import '../../core/update/update_checker.dart';
+import '../../shared/widgets/login_shell.dart';
+import '../../shared/widgets/update_dialog.dart';
 import '../campus_card/campus_card_service.dart';
 import '../dorm_electricity/dorm_electricity_service.dart';
 import '../schedule/schedule_cache_snapshot.dart';
@@ -31,7 +35,9 @@ class _HomePageState extends State<HomePage> {
   bool _courseLoggedIn = false;
   bool _hasScheduleCache = false;
   DateTime? _scheduleUpdatedAt;
+  bool _hasAvailableUpdate = false;
   bool _hasHydratedBootstrapState = false;
+  bool _initialLoginPromptChecked = false;
 
   static const _weekdayLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
@@ -43,11 +49,15 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    _hasAvailableUpdate = UpdateChecker.instance.availableRelease.value != null;
     SemesterCalendar.instance.semesterStartDate.addListener(
       _onSemesterStartChanged,
     );
     ZhengfangAuth.instance.addListener(_onAcademicAuthChanged);
     _bootstrapController.phase.addListener(_onBootstrapPhaseChanged);
+    UpdateChecker.instance.availableRelease.addListener(
+      _onAvailableReleaseChanged,
+    );
     _onBootstrapPhaseChanged();
   }
 
@@ -58,7 +68,18 @@ class _HomePageState extends State<HomePage> {
     );
     ZhengfangAuth.instance.removeListener(_onAcademicAuthChanged);
     _bootstrapController.phase.removeListener(_onBootstrapPhaseChanged);
+    UpdateChecker.instance.availableRelease.removeListener(
+      _onAvailableReleaseChanged,
+    );
     super.dispose();
+  }
+
+  void _onAvailableReleaseChanged() {
+    if (!mounted) return;
+    setState(() {
+      _hasAvailableUpdate =
+          UpdateChecker.instance.availableRelease.value != null;
+    });
   }
 
   void _onAcademicAuthChanged() {
@@ -84,7 +105,24 @@ class _HomePageState extends State<HomePage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       unawaited(_refreshDeferredContent());
+      unawaited(_maybeShowInitialUnifiedAuthPrompt());
     });
+  }
+
+  Future<void> _maybeShowInitialUnifiedAuthPrompt() async {
+    if (_initialLoginPromptChecked || UnifiedAuthService.instance.isLoggedIn) {
+      _initialLoginPromptChecked = true;
+      return;
+    }
+
+    _initialLoginPromptChecked = true;
+    if (!mounted) return;
+
+    await showUnifiedAuthLoginModal(
+      context,
+      title: '登录一卡通',
+      description: '首次使用先完成统一认证，后续可直接进入一卡通与服务大厅',
+    );
   }
 
   int _nextStartLesson(DateTime now) {
@@ -457,6 +495,10 @@ class _HomePageState extends State<HomePage> {
                               ],
                             ),
                           ),
+                          if (_hasAvailableUpdate) ...[
+                            _buildUpdateAction(context),
+                            const SizedBox(width: 12),
+                          ],
                           IconButton(
                             icon: const Icon(
                               Icons.notifications_outlined,
@@ -493,6 +535,42 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildUpdateAction(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        IconButton(
+          icon: const Icon(
+            Icons.system_update_outlined,
+            color: Colors.white,
+            size: 22,
+          ),
+          onPressed: () {
+            final release = UpdateChecker.instance.availableRelease.value;
+            if (release == null) return;
+            showUpdateDialog(context, release);
+          },
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(),
+          tooltip: '发现新版本',
+        ),
+        Positioned(
+          right: -1,
+          top: -1,
+          child: Container(
+            width: 9,
+            height: 9,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFF6B6B),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 1.2),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

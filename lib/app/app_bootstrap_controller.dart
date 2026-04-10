@@ -8,6 +8,7 @@ import '../core/logging/app_logger.dart';
 import '../core/network/dio_client.dart';
 import '../core/network/network_settings.dart';
 import '../core/semester/semester_calendar.dart';
+import '../core/update/update_checker.dart';
 import '../features/campus_card/campus_card_service.dart';
 import '../features/changxing_jiada/changxing_jiada_service.dart';
 import '../features/dorm_electricity/dorm_electricity_service.dart';
@@ -86,6 +87,7 @@ class AppBootstrapController {
     phase.value = AppBootstrapPhase.localStateReady;
     await Future<void>.delayed(Duration.zero);
     phase.value = AppBootstrapPhase.completed;
+    unawaited(UpdateChecker.instance.check(silent: true));
   }
 
   @visibleForTesting

@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/theme.dart';
 import '../../core/auth/unified_auth.dart';
 import '../../core/auth/zhengfang_auth.dart';
+import '../../shared/widgets/login_shell.dart';
 import '../schedule/schedule_service.dart';
 
 class MyPage extends StatefulWidget {
@@ -93,13 +94,13 @@ class _MyPageState extends State<MyPage> {
       await _refreshStatus();
       return;
     }
-    await context.pushNamed('unified-auth-login');
+    await showUnifiedAuthLoginModal(context);
     if (!mounted) return;
     await _refreshStatus();
   }
 
   Future<void> _loginAcademic() async {
-    await context.pushNamed('academic-system-login');
+    await showAcademicSystemLoginModal(context);
     if (!mounted) return;
     await _refreshStatus();
   }
@@ -127,7 +128,7 @@ class _MyPageState extends State<MyPage> {
   }
 
   Future<void> _reloginCampus() async {
-    await context.pushNamed('unified-auth-login');
+    await showUnifiedAuthLoginModal(context);
     if (!mounted) return;
     await _refreshStatus();
   }
