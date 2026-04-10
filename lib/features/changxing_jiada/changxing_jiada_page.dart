@@ -123,11 +123,10 @@ class _ChangxingJiadaPageState extends State<ChangxingJiadaPage> {
   }
 
   Future<void> _promptCasLogin() async {
-    final loggedIn = await showUnifiedAuthLoginModal(
+    final loggedIn = await showWebVpnUnifiedAuthModal(
       context,
       title: '登录一卡通',
       description: '畅行嘉大需要先完成一卡通认证',
-      forceWebVpn: true,
       barrierDismissible: false,
     );
     if (!mounted || !loggedIn) return;

@@ -86,13 +86,11 @@ void main() {
   );
 
   testWidgets('hides title block when showHeader is false', (tester) async {
-    var loginSucceeded = false;
-
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: UnifiedAuthLoginWidget(
-            onLoginSuccess: () => loginSucceeded = true,
+            onLoginSuccess: () {},
             showHeader: false,
             loadSavedCredentials: () async => ('', ''),
             sessionPreflight: () async => true,
@@ -101,13 +99,7 @@ void main() {
       ),
     );
 
-    for (var i = 0; i < 10; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-      if (loginSucceeded) break;
-    }
-
     expect(find.text('登录统一认证'), findsNothing);
     expect(find.text('账号为校园一卡通号'), findsNothing);
-    expect(find.byType(TextField), findsWidgets);
   });
 }

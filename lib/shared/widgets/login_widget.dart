@@ -98,11 +98,10 @@ class _LoginWidgetState extends State<LoginWidget> {
     if (_casAuthenticating) return;
     _casAuthenticating = true;
 
-    final loggedIn = await showUnifiedAuthLoginModal(
+    final loggedIn = await showWebVpnUnifiedAuthModal(
       context,
       title: '登录一卡通',
       description: '非校园网环境下需先完成一卡通认证',
-      forceWebVpn: true,
       barrierDismissible: false,
     );
 

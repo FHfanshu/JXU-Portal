@@ -767,6 +767,59 @@ class ZhengfangAuth extends ChangeNotifier {
     }
   }
 
+  /// 校验指定 WebVPN 代理目标是否已有有效登录态。
+  /// 返回:
+  /// - `true`: WebVPN session 有效
+  /// - `false`: 已明确失效，需要重新登录
+  /// - `null`: 校验失败（网络异常），不下结论
+  Future<bool?> validateWebVpnProxySession(String targetUrl) async {
+    await DioClient.instance.ensureInitialized();
+    final probeUrl = buildWebVpnProxyUrl(targetUrl);
+
+    try {
+      final response = await _dio.get<String>(
+        probeUrl,
+        options: Options(
+          responseType: ResponseType.plain,
+          followRedirects: false,
+          validateStatus: (status) => status != null && status < 1000,
+          headers: {'Referer': '$_webVpnBase/'},
+        ),
+      );
+
+      final statusCode = response.statusCode ?? 0;
+      final location = response.headers.value('location') ?? '';
+      final resolvedLocation = location.isEmpty
+          ? ''
+          : Uri.parse(probeUrl).resolve(location).toString();
+
+      final redirectedToLogin =
+          (statusCode == 302 || statusCode == 303) &&
+          isZhengfangLoginEntryUrl(resolvedLocation);
+      final landedOnLogin = isZhengfangLoginEntryUrl(
+        response.realUri.toString(),
+      );
+
+      if (redirectedToLogin || landedOnLogin) {
+        AppLogger.instance.info('WebVPN 目标会话已失效: $probeUrl');
+        return false;
+      }
+
+      return true;
+    } on DioException catch (e) {
+      AppLogger.instance.info('WebVPN 目标会话校验失败（网络异常）: ${e.type} ${e.message}');
+      return null;
+    } catch (e) {
+      AppLogger.instance.info('WebVPN 目标会话校验失败（未知异常）: $e');
+      return null;
+    }
+  }
+
+  Future<bool?> validateWebVpnTargetSession(String targetUrl) async {
+    setMode(ZhengfangMode.webVpn);
+    return validateWebVpnProxySession(targetUrl);
+  }
+
   /// 跟随 WebVPN CAS 重定向链建立 session
   Future<void> _followWebVpnRedirectChain(
     String referer,

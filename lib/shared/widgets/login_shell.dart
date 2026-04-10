@@ -284,6 +284,21 @@ Future<bool> showUnifiedAuthLoginModal(
   return result == true;
 }
 
+Future<bool> showWebVpnUnifiedAuthModal(
+  BuildContext context, {
+  String title = '登录一卡通',
+  required String description,
+  bool barrierDismissible = true,
+}) {
+  return showUnifiedAuthLoginModal(
+    context,
+    title: title,
+    description: description,
+    forceWebVpn: true,
+    barrierDismissible: barrierDismissible,
+  );
+}
+
 Future<bool> showAcademicSystemLoginModal(
   BuildContext context, {
   bool barrierDismissible = true,
