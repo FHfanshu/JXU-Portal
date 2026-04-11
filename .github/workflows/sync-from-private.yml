@@ -13,6 +13,9 @@ jobs:
     steps:
       - name: Checkout public repository
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+          persist-credentials: true
 
       - name: Checkout private source repository
         uses: actions/checkout@v5
@@ -20,12 +23,15 @@ jobs:
           repository: FHfanshu/ZJXU-portal
           ref: master
           path: source
-          ssh-key: ${{ secrets.SOURCE_REPO_SSH_KEY }}
+          token: ${{ secrets.SOURCE_REPO_TOKEN }}
           persist-credentials: false
 
       - name: Capture source commit metadata
         shell: bash
         run: |
+          # Runtime-critical code must stay identical between private/dev and public.
+          # In particular, android/app/src/main includes AndroidManifest, res, java and kotlin
+          # implementations that affect release behavior and must not drift.
           managed_paths=(
             lib
             assets
@@ -43,6 +49,31 @@ jobs:
             android/gradle.properties
             android/gradle/wrapper/gradle-wrapper.properties
           )
+
+          {
+            echo "MANAGED_PATHS<<EOF"
+            printf '%s\n' "${managed_paths[@]}"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: Validate managed paths exist in source
+        shell: bash
+        run: |
+          mapfile -t managed_paths <<< "$MANAGED_PATHS"
+          missing_paths=()
+
+          for path in "${managed_paths[@]}"; do
+            if [ ! -e "source/$path" ]; then
+              missing_paths+=("$path")
+            fi
+          done
+
+          if [ ${#missing_paths[@]} -gt 0 ]; then
+            printf 'Missing managed paths in source repository:\n' >&2
+            printf '  - %s\n' "${missing_paths[@]}" >&2
+            exit 1
+          fi
+
           {
             echo "SOURCE_COMMIT_SHA=$(git -C source log -1 --pretty=%h -- "${managed_paths[@]}")"
             echo "SOURCE_COMMIT_SUBJECT<<EOF"
@@ -56,38 +87,62 @@ jobs:
       - name: Sync managed files
         shell: bash
         run: |
+          # Keep all runtime-critical sources in sync. Syncing android/app/src/main
+          # intentionally includes manifest/resources/native bridges/java/kotlin code.
+          managed_dirs=(
+            lib
+            assets
+            test
+            android/app/src/main
+          )
+          managed_files=(
+            README.md
+            pubspec.yaml
+            analysis_options.yaml
+            android/app/src/debug/AndroidManifest.xml
+            android/app/src/profile/AndroidManifest.xml
+            android/app/build.gradle.kts
+            android/build.gradle.kts
+            android/settings.gradle.kts
+            android/gradle.properties
+            android/gradle/wrapper/gradle-wrapper.properties
+          )
+
           mkdir -p lib assets test android/app/src/main android/app/src/debug android/app/src/profile android/gradle/wrapper
-          rsync -a --delete source/lib/ lib/
-          rsync -a --delete source/assets/ assets/
-          rsync -a --delete source/test/ test/
-          rsync -a --delete source/android/app/src/main/ android/app/src/main/
-          install -m 644 source/android/app/src/debug/AndroidManifest.xml android/app/src/debug/AndroidManifest.xml
-          install -m 644 source/android/app/src/profile/AndroidManifest.xml android/app/src/profile/AndroidManifest.xml
-          install -m 644 source/android/app/build.gradle.kts android/app/build.gradle.kts
-          install -m 644 source/android/build.gradle.kts android/build.gradle.kts
-          install -m 644 source/android/settings.gradle.kts android/settings.gradle.kts
-          install -m 644 source/android/gradle.properties android/gradle.properties
-          install -m 644 source/android/gradle/wrapper/gradle-wrapper.properties android/gradle/wrapper/gradle-wrapper.properties
-          install -m 644 source/README.md README.md
-          install -m 644 source/pubspec.yaml pubspec.yaml
+
+          for dir in "${managed_dirs[@]}"; do
+            rsync -a --delete "source/$dir/" "$dir/"
+          done
+
+          for file in "${managed_files[@]}"; do
+            install -m 644 "source/$file" "$file"
+          done
+
           if [ -f source/pubspec.lock ]; then
             install -m 644 source/pubspec.lock pubspec.lock
           else
             rm -f pubspec.lock
           fi
-          install -m 644 source/analysis_options.yaml analysis_options.yaml
           rm -rf source
 
       - name: Commit synced changes
         shell: bash
         run: |
-          if [ -z "$(git status --porcelain -- lib assets test android/app/src/main android/app/src/debug/AndroidManifest.xml android/app/src/profile/AndroidManifest.xml android/app/build.gradle.kts android/build.gradle.kts android/settings.gradle.kts android/gradle.properties android/gradle/wrapper/gradle-wrapper.properties README.md pubspec.yaml pubspec.lock analysis_options.yaml)" ]; then
+          mapfile -t managed_paths <<< "$MANAGED_PATHS"
+
+          changed_files="$(git status --short -- "${managed_paths[@]}")"
+
+          if [ -z "$changed_files" ]; then
             echo "No synced changes detected."
             exit 0
           fi
+
+          echo "Synced changes detected:"
+          printf '%s\n' "$changed_files"
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add lib assets test android/app/src/main android/app/src/debug/AndroidManifest.xml android/app/src/profile/AndroidManifest.xml android/app/build.gradle.kts android/build.gradle.kts android/settings.gradle.kts android/gradle.properties android/gradle/wrapper/gradle-wrapper.properties README.md pubspec.yaml pubspec.lock analysis_options.yaml
+          git add "${managed_paths[@]}"
 
           commit_message_file="$(mktemp)"
           printf '%s\n\n' "${SOURCE_COMMIT_SUBJECT:-chore: sync private source}" > "$commit_message_file"
