@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:go_router/go_router.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../app/app_route_observer.dart';
@@ -52,6 +53,7 @@ class _CampusCardPaymentPageState extends State<CampusCardPaymentPage> {
       url: CampusCardService.paymentCodeServiceHallUrl,
       serviceUrl: CampusCardService.serviceHallCasServiceUrl,
       loginDescription: '统一认证登录后可直接进入建行消费码',
+      onHomePressed: () => context.goNamed('home'),
       onLoadStop: CampusCardPaymentPage.autoClickServiceHallPaymentCode,
       appBarActions: [
         TextButton(

@@ -20,7 +20,8 @@ class MainActivity : FlutterActivity() {
         private const val SHORTCUT_SCHEME = "jiaxinguniversityportal"
         private const val SHORTCUT_HOST = "shortcut"
         private const val CAMPUS_CARD_PAYMENT_ACTION = "campus-card-payment"
-        private const val CAMPUS_CARD_PAYMENT_SHORTCUT_ID = "campus_card_payment_pinned"
+        private const val CAMPUS_CARD_PAYMENT_SHORTCUT_ID = "campus_card_payment"
+        private const val LEGACY_CAMPUS_CARD_PAYMENT_SHORTCUT_ID = "campus_card_payment_pinned"
     }
 
     private var pendingShortcutAction: String? = null
@@ -29,6 +30,7 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         pendingShortcutAction = extractShortcutAction(intent)
+        cleanupLegacyPaymentShortcut()
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -115,7 +117,12 @@ class MainActivity : FlutterActivity() {
 
             // Some launchers only fully recognize pinned shortcuts after the same
             // shortcutId has been published as a dynamic shortcut first.
-            shortcutManager.removeDynamicShortcuts(listOf(CAMPUS_CARD_PAYMENT_SHORTCUT_ID))
+            shortcutManager.removeDynamicShortcuts(
+                listOf(
+                    CAMPUS_CARD_PAYMENT_SHORTCUT_ID,
+                    LEGACY_CAMPUS_CARD_PAYMENT_SHORTCUT_ID,
+                ),
+            )
             shortcutManager.addDynamicShortcuts(listOf(shortcut))
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -142,6 +149,17 @@ class MainActivity : FlutterActivity() {
             },
         )
         return true
+    }
+
+    private fun cleanupLegacyPaymentShortcut() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N_MR1) {
+            return
+        }
+
+        val shortcutManager = getSystemService(ShortcutManager::class.java) ?: return
+        shortcutManager.removeDynamicShortcuts(
+            listOf(LEGACY_CAMPUS_CARD_PAYMENT_SHORTCUT_ID),
+        )
     }
 
     private fun buildCampusCardPaymentShortcutInfo(shortcutIntent: Intent): ShortcutInfo {

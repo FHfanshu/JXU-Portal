@@ -169,6 +169,8 @@ class ZhengfangAuth extends ChangeNotifier {
         '77726476706e69737468656265737421eaff59d23d3a7045300d8db9d6562d',
     'newca.zjxu.edu.cn':
         '77726476706e69737468656265737421fef2569f267e725a661dc7a99c406d362a',
+    'sjjx.zjxu.edu.cn':
+        '77726476706e69737468656265737421e3fd4b84692a62486b468ca88d1b203b',
   };
 
   /// WebVPN CAS 登录路径

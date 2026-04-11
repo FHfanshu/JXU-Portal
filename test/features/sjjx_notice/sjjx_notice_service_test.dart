@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jiaxing_university_portal/features/sjjx_notice/sjjx_notice_service.dart';
@@ -36,5 +39,51 @@ void main() {
       'http://sjjx.zjxu.edu.cn/sjjx/shownews.aspx?ptype=lw&newsno=203',
     );
     expect(notices.last.date, '2026-04-08');
+  });
+
+  test('decodes utf8 unified auth page and detects auth redirect', () {
+    const loginHtml = '''
+<html>
+  <head><title>统一身份认证平台</title></head>
+  <body>
+    <form id="fm1">
+      <input name="execution" />
+    </form>
+  </body>
+</html>
+''';
+
+    final response = Response<List<int>>(
+      data: utf8.encode(loginHtml),
+      headers: Headers.fromMap({
+        Headers.contentTypeHeader: <String>['text/html; charset=UTF-8'],
+      }),
+      requestOptions: RequestOptions(
+        path: 'http://sjjx.zjxu.edu.cn/sjjx/morenews.aspx?NewsType=gonggao',
+      ),
+    );
+
+    expect(decodeSjjxNoticeHtml(response), contains('统一身份认证平台'));
+    expect(looksLikeSjjxResponseNeedsUnifiedAuth(response), isTrue);
+  });
+
+  test('does not treat normal sjjx list html as unified auth page', () {
+    const pageHtml = '''
+<html>
+  <head><title>实践教学通知</title></head>
+  <body>
+    <div class="List_R02"><div class="List_R02_L"><a href="shownews.aspx?id=1" title="测试">[通知]测试</a></div></div>
+  </body>
+</html>
+''';
+
+    final response = Response<List<int>>(
+      data: utf8.encode(pageHtml),
+      requestOptions: RequestOptions(
+        path: 'http://sjjx.zjxu.edu.cn/sjjx/morenews.aspx?NewsType=gonggao',
+      ),
+    );
+
+    expect(looksLikeSjjxResponseNeedsUnifiedAuth(response), isFalse);
   });
 }

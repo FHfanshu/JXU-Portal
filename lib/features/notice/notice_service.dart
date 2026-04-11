@@ -15,6 +15,33 @@ const _jwcNoticeBaseUrl = 'https://jwc.zjxu.edu.cn/';
 const _jwcNoticeListUrl = 'https://jwc.zjxu.edu.cn/list.jsp';
 
 @visibleForTesting
+bool looksLikeNoticeResponseNeedsUnifiedAuth(Response<List<int>> response) {
+  final realUrl = response.realUri.toString();
+  if (isUnifiedAuthLoginEntryUrl(realUrl)) {
+    return true;
+  }
+
+  final statusCode = response.statusCode ?? 0;
+  if (statusCode == 302 || statusCode == 303) {
+    final location = response.headers.value('location') ?? '';
+    if (location.isNotEmpty) {
+      final resolved = response.requestOptions.uri.resolve(location).toString();
+      if (isUnifiedAuthLoginEntryUrl(resolved)) {
+        return true;
+      }
+    }
+  }
+
+  final body = response.data;
+  if (body == null || body.isEmpty) {
+    return false;
+  }
+
+  final html = utf8.decode(body, allowMalformed: true);
+  return looksLikeUnifiedAuthLoginHtml(html);
+}
+
+@visibleForTesting
 List<Notice> parseJwcNoticeListHtml(String html) {
   final doc = html_parser.parse(html);
   final listItems = doc.querySelectorAll('#ul1 li');
@@ -193,7 +220,16 @@ class NoticeService {
   Future<Response<List<int>>> _getWithUnifiedAuthFallback(String url) async {
     final directDio = await _ensureNoticeDio();
     try {
-      return await directDio.get<List<int>>(url);
+      final directResponse = await directDio.get<List<int>>(url);
+      if (!looksLikeNoticeResponseNeedsUnifiedAuth(directResponse)) {
+        return directResponse;
+      }
+
+      AppLogger.instance.network(
+        LogLevel.warn,
+        '通知公告直连命中统一认证登录页，尝试恢复统一认证会话: $url',
+      );
+      return _getThroughUnifiedAuth(url);
     } on DioException catch (error, stackTrace) {
       AppLogger.instance.network(
         LogLevel.warn,
@@ -201,40 +237,61 @@ class NoticeService {
         error: error,
         stackTrace: stackTrace,
       );
-      final unifiedAuthReady = await UnifiedAuthService.instance
-          .validateSession(serviceUrl: url, syncWebViewCookies: false);
-      if (unifiedAuthReady != true) {
-        AppLogger.instance.network(
-          LogLevel.warn,
-          '通知公告统一认证会话不可用，无法继续直连访问',
-          error: error,
-          stackTrace: stackTrace,
-        );
-        rethrow;
-      }
-
-      try {
-        final response = await DioClient.instance.unifiedAuthDio.get<List<int>>(
-          url,
-          options: Options(responseType: ResponseType.bytes),
-        );
-        AppLogger.instance.network(LogLevel.info, '通知公告已通过统一认证直连加载');
-        return response;
-      } on DioException catch (fallbackError, fallbackStackTrace) {
-        AppLogger.instance.network(
-          LogLevel.error,
-          '通知公告统一认证直连回退失败',
-          error: fallbackError,
-          stackTrace: fallbackStackTrace,
-        );
-        rethrow;
-      }
+      return _getThroughUnifiedAuth(url, error: error, stackTrace: stackTrace);
     } catch (error, stackTrace) {
       AppLogger.instance.network(
         LogLevel.error,
         '通知公告请求异常',
         error: error,
         stackTrace: stackTrace,
+      );
+      rethrow;
+    }
+  }
+
+  Future<Response<List<int>>> _getThroughUnifiedAuth(
+    String url, {
+    Object? error,
+    StackTrace? stackTrace,
+  }) async {
+    final unifiedAuthReady = await UnifiedAuthService.instance.validateSession(
+      serviceUrl: url,
+      syncWebViewCookies: false,
+    );
+    if (unifiedAuthReady != true) {
+      AppLogger.instance.network(
+        LogLevel.warn,
+        '通知公告统一认证会话不可用，无法继续访问: $url',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      if (error is DioException) {
+        throw error;
+      }
+      throw StateError('通知公告统一认证会话不可用');
+    }
+
+    try {
+      final response = await DioClient.instance.unifiedAuthDio.get<List<int>>(
+        url,
+        options: Options(
+          responseType: ResponseType.bytes,
+          followRedirects: true,
+          validateStatus: (status) => status != null && status < 1000,
+        ),
+      );
+      if (looksLikeNoticeResponseNeedsUnifiedAuth(response)) {
+        AppLogger.instance.network(LogLevel.warn, '通知公告统一认证回退后仍返回登录页: $url');
+        throw StateError('通知公告统一认证会话已失效');
+      }
+      AppLogger.instance.network(LogLevel.info, '通知公告已通过统一认证直连加载');
+      return response;
+    } on DioException catch (fallbackError, fallbackStackTrace) {
+      AppLogger.instance.network(
+        LogLevel.error,
+        '通知公告统一认证直连回退失败',
+        error: fallbackError,
+        stackTrace: fallbackStackTrace,
       );
       rethrow;
     }

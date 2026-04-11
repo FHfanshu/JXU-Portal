@@ -69,6 +69,32 @@ void main() {
         isNull,
       );
     });
+
+    test('detects CAS service ticket in redirect URL', () {
+      expect(
+        urlHasCasTicket(
+          'https://jwc.zjxu.edu.cn/list.jsp?urltype=tree.TreeTempUrl&wbtreeid=1046&ticket=ST-2264228-QMc7qINDQpzU16ZaFsTy',
+        ),
+        isTrue,
+      );
+      expect(
+        urlHasCasTicket(
+          'https://newca.zjxu.edu.cn/casClient/login/ydd?ticket=ST-2264230-owrrknxbK93UxDAQZbny',
+        ),
+        isTrue,
+      );
+      expect(
+        urlHasCasTicket(
+          'https://jwc.zjxu.edu.cn/list.jsp?urltype=tree.TreeTempUrl&wbtreeid=1046',
+        ),
+        isFalse,
+      );
+      expect(urlHasCasTicket(''), isFalse);
+      expect(
+        urlHasCasTicket('https://example.com/page?ticket=not-a-cas-ticket'),
+        isFalse,
+      );
+    });
   });
 
   group('Unified auth login html detection', () {

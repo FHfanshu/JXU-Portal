@@ -327,8 +327,11 @@ class _WebViewPageState extends State<WebViewPage> {
 
     setState(() => _allowRoutePop = true);
     final didPop = await Navigator.of(context).maybePop();
-    if (mounted && !didPop) {
+    if (!mounted) return;
+
+    if (!didPop) {
       setState(() => _allowRoutePop = false);
+      widget.onHomePressed?.call();
     }
   }
 

@@ -28,6 +28,15 @@ bool isUnifiedAuthLoginEntryUrl(String currentUrl) {
   return path.contains('/cas/login');
 }
 
+bool urlHasCasTicket(String location) {
+  if (location.isEmpty) return false;
+  final uri = Uri.tryParse(location);
+  if (uri == null) return false;
+  final ticket = uri.queryParameters['ticket'] ?? '';
+  if (ticket.isEmpty) return false;
+  return ticket.startsWith('ST-');
+}
+
 bool isUnifiedAuthAuthenticatedUrl(String currentUrl) {
   final raw = currentUrl.trim();
   if (raw.isEmpty) return false;
@@ -238,8 +247,9 @@ class UnifiedAuthService extends ChangeNotifier {
       final html = response.data ?? '';
       final hasActiveSession = (statusCode == 302 || statusCode == 303)
           ? isUnifiedAuthAuthenticatedUrl(
-              _resolveUri(loginUri, location).toString(),
-            )
+                  _resolveUri(loginUri, location).toString(),
+                ) ||
+                urlHasCasTicket(location)
           : !looksLikeUnifiedAuthLoginHtml(html);
 
       if (!hasActiveSession) {
