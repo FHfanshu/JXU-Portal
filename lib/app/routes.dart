@@ -11,6 +11,7 @@ import '../features/schedule/schedule_page.dart';
 import '../features/grades/grades_page.dart';
 import '../features/campus_card/campus_card_page.dart';
 import '../features/campus_card/campus_card_payment_page.dart';
+import '../features/library/library_page.dart';
 import '../features/notice/notice_list_page.dart';
 import '../features/sjjx_notice/sjjx_notice_list_page.dart';
 import '../features/service_hall/service_hall_page.dart';
@@ -89,12 +90,7 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/library',
       name: 'library',
-      builder: (context, state) => WebVpnProtectedWebViewPage(
-        title: '图书馆',
-        url: 'https://libapp.zjxu.edu.cn/Info/Thirdparty/ssoFromDingDing',
-        preferWebViewBackNavigation: true,
-        onHomePressed: () => context.goNamed('home'),
-      ),
+      builder: (context, state) => const LibraryPage(),
     ),
     GoRoute(
       path: '/second-classroom',
@@ -102,7 +98,7 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => WebVpnProtectedWebViewPage(
         title: '第二课堂',
         url: 'https://twdekt.zjxu.edu.cn/dekt/wx/index?_WXFTL=0',
-        preferWebViewBackNavigation: true,
+        showWebViewBottomBackButton: true,
         onHomePressed: () => context.goNamed('home'),
       ),
     ),
@@ -175,16 +171,16 @@ final GoRouter appRouter = GoRouter(
                 extra['loginDescription'] as String? ?? '需要先完成统一认证',
             emulateDingTalkEnvironment:
                 extra['emulateDingTalkEnvironment'] == true,
-            preferWebViewBackNavigation:
-                extra['preferWebViewBackNavigation'] == true,
+            showWebViewBottomBackButton:
+                extra['showWebViewBottomBackButton'] == true,
           );
         }
         if (extra['requireWebVpnProtection'] == true) {
           return WebVpnProtectedWebViewPage(
             title: extra['title'] ?? '网页',
             url: extra['url'] ?? '',
-            preferWebViewBackNavigation:
-                extra['preferWebViewBackNavigation'] == true,
+            showWebViewBottomBackButton:
+                extra['showWebViewBottomBackButton'] == true,
           );
         }
         return WebViewPage(
@@ -193,6 +189,8 @@ final GoRouter appRouter = GoRouter(
           enableLoginQuickFill: extra['enableLoginQuickFill'] == true,
           emulateDingTalkEnvironment:
               extra['emulateDingTalkEnvironment'] == true,
+          showWebViewBottomBackButton:
+              extra['showWebViewBottomBackButton'] == true,
         );
       },
     ),

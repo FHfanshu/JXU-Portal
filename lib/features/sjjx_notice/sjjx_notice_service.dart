@@ -9,8 +9,6 @@ import '../../core/auth/unified_auth.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/network/dio_client.dart';
-import '../../core/network/network_settings.dart';
-import '../../core/network/proxy_mode.dart';
 import 'sjjx_notice_model.dart';
 
 const _sjjxNoticeBaseUrl = 'http://sjjx.zjxu.edu.cn/sjjx/';
@@ -48,7 +46,29 @@ bool looksLikeSjjxResponseNeedsUnifiedAuth(Response<List<int>> response) {
   }
 
   final html = utf8.decode(body, allowMalformed: true);
+  if (looksLikeSjjxNoticeListHtml(html)) {
+    return false;
+  }
   return looksLikeUnifiedAuthLoginHtml(html);
+}
+
+@visibleForTesting
+bool looksLikeSjjxNoticeListHtml(String html) {
+  if (html.trim().isEmpty) {
+    return false;
+  }
+
+  final doc = html_parser.parse(html);
+  if (doc.querySelectorAll('.List_R02').isNotEmpty) {
+    return true;
+  }
+
+  final title = doc.querySelector('title')?.text.trim() ?? '';
+  if (!title.contains('实践')) {
+    return false;
+  }
+
+  return doc.querySelector('.List_R02_L a') != null;
 }
 
 @visibleForTesting
@@ -119,7 +139,6 @@ class SjjxNoticeService {
   static final SjjxNoticeService instance = SjjxNoticeService._();
 
   List<SjjxNotice>? _cachedNotices;
-  Dio? _dio;
 
   List<SjjxNotice>? get cachedNotices => _cachedNotices;
 
@@ -171,75 +190,15 @@ class SjjxNoticeService {
     }
   }
 
-  Dio _createDio() {
-    final client = Dio(
-      BaseOptions(
-        connectTimeout: const Duration(seconds: 15),
-        receiveTimeout: const Duration(seconds: 15),
-        headers: {
-          'User-Agent':
-              'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 '
-              '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-        },
-        responseType: ResponseType.bytes,
-      ),
-    );
-    applyProxyModeToDio(
-      client,
-      ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
-    );
-    return client;
-  }
-
-  Future<Dio> _ensureDio() async {
-    await NetworkSettings.instance.ensureInitialized();
-    final existing = _dio;
-    if (existing != null) return existing;
-
-    final created = _createDio();
-    _dio = created;
-    return created;
-  }
-
   Future<Response<List<int>>> _getWithWebVpnFallback(String url) async {
-    final directDio = await _ensureDio();
-    try {
-      final directResponse = await directDio.get<List<int>>(url);
-      if (!looksLikeSjjxResponseNeedsUnifiedAuth(directResponse)) {
-        return directResponse;
-      }
-
-      AppLogger.instance.network(
-        LogLevel.warn,
-        '实践通知直连命中统一认证登录页，尝试恢复统一认证会话: $url',
-      );
-      return _getThroughUnifiedAuth(url);
-    } on DioException catch (error, stackTrace) {
-      AppLogger.instance.network(
-        LogLevel.warn,
-        '实践通知直连失败，尝试统一认证或 WebVPN 访问: $url',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      return _getThroughUnifiedAuth(url, error: error, stackTrace: stackTrace);
-    } catch (error, stackTrace) {
-      AppLogger.instance.network(
-        LogLevel.error,
-        '实践通知请求异常',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      rethrow;
-    }
+    ZhengfangAuth.instance.setMode(ZhengfangMode.webVpn);
+    return _fetchViaWebVpn(url, allowRecovery: true);
   }
 
-  Future<Response<List<int>>> _getThroughWebVpn(String url) async {
-    final webVpnReady = await ZhengfangAuth.instance
-        .validateWebVpnTargetSession(url);
-    if (webVpnReady != true) {
-      throw StateError('实践通知 WebVPN 会话不可用');
-    }
-
+  Future<Response<List<int>>> _fetchViaWebVpn(
+    String url, {
+    required bool allowRecovery,
+  }) async {
     final proxyUrl = ZhengfangAuth.instance.buildWebVpnProxyUrl(url);
     if (proxyUrl == url) {
       throw StateError('实践通知 WebVPN 代理地址未配置');
@@ -254,69 +213,21 @@ class SjjxNoticeService {
       ),
     );
     if (looksLikeSjjxResponseNeedsUnifiedAuth(response)) {
-      throw StateError('实践通知 WebVPN 回退后仍返回登录页');
+      if (allowRecovery) {
+        AppLogger.instance.network(
+          LogLevel.warn,
+          '实践通知 WebVPN 目标页仍要求认证，尝试恢复 WebVPN 网关会话: $url',
+        );
+        final recovered = await ZhengfangAuth.instance
+            .ensureWebVpnGatewaySession(syncWebViewCookies: false);
+        if (recovered == true) {
+          return _fetchViaWebVpn(url, allowRecovery: false);
+        }
+      }
+      AppLogger.instance.network(LogLevel.warn, '实践通知 WebVPN 会话不可用: $url');
+      throw StateError('实践通知 WebVPN 会话不可用');
     }
     AppLogger.instance.network(LogLevel.info, '实践通知已通过 WebVPN 回退加载');
     return response;
-  }
-
-  Future<Response<List<int>>> _getThroughUnifiedAuth(
-    String url, {
-    Object? error,
-    StackTrace? stackTrace,
-  }) async {
-    final unifiedAuthReady = await UnifiedAuthService.instance.validateSession(
-      serviceUrl: url,
-      syncWebViewCookies: false,
-    );
-    if (unifiedAuthReady != true) {
-      AppLogger.instance.network(
-        LogLevel.warn,
-        '实践通知统一认证会话不可用，尝试 WebVPN 回退: $url',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      try {
-        return await _getThroughWebVpn(url);
-      } catch (_) {}
-      if (error is DioException) {
-        throw error;
-      }
-      throw StateError('实践通知统一认证会话不可用');
-    }
-
-    try {
-      final response = await DioClient.instance.unifiedAuthDio.get<List<int>>(
-        url,
-        options: Options(
-          responseType: ResponseType.bytes,
-          followRedirects: true,
-          validateStatus: (status) => status != null && status < 1000,
-        ),
-      );
-      if (looksLikeSjjxResponseNeedsUnifiedAuth(response)) {
-        AppLogger.instance.network(
-          LogLevel.warn,
-          '实践通知统一认证回退后仍返回登录页，尝试 WebVPN: $url',
-        );
-        try {
-          return await _getThroughWebVpn(url);
-        } catch (_) {}
-        throw StateError('实践通知统一认证会话已失效');
-      }
-      AppLogger.instance.network(LogLevel.info, '实践通知已通过统一认证直连加载');
-      return response;
-    } on DioException catch (fallbackError, fallbackStackTrace) {
-      AppLogger.instance.network(
-        LogLevel.warn,
-        '实践通知统一认证直连回退失败，尝试 WebVPN: $url',
-        error: fallbackError,
-        stackTrace: fallbackStackTrace,
-      );
-      try {
-        return await _getThroughWebVpn(url);
-      } catch (_) {}
-      rethrow;
-    }
   }
 }

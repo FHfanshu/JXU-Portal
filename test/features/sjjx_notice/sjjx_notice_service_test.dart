@@ -86,4 +86,42 @@ void main() {
 
     expect(looksLikeSjjxResponseNeedsUnifiedAuth(response), isFalse);
   });
+
+  test('treats webvpn login response as auth required', () {
+    final response = Response<List<int>>(
+      data: utf8.encode('<html><body>webvpn login</body></html>'),
+      requestOptions: RequestOptions(path: 'https://webvpn.zjxu.edu.cn/login'),
+    );
+
+    expect(looksLikeSjjxResponseNeedsUnifiedAuth(response), isTrue);
+  });
+
+  test('prefers sjjx list markers over generic unified auth markers', () {
+    const pageHtml = '''
+<html>
+  <head><title>实践教学通知</title></head>
+  <body>
+    <form id="fm1">
+      <input name="execution" />
+    </form>
+    <div class="List_R02">
+      <div class="List_R02_L">
+        <a href="shownews.aspx?id=1" title="测试通知">[通知]测试通知</a>
+      </div>
+      <div class="List_R02_R">2026-04-11</div>
+    </div>
+  </body>
+</html>
+''';
+
+    final response = Response<List<int>>(
+      data: utf8.encode(pageHtml),
+      requestOptions: RequestOptions(
+        path: 'http://sjjx.zjxu.edu.cn/sjjx/morenews.aspx?NewsType=gonggao',
+      ),
+    );
+
+    expect(looksLikeSjjxNoticeListHtml(pageHtml), isTrue);
+    expect(looksLikeSjjxResponseNeedsUnifiedAuth(response), isFalse);
+  });
 }

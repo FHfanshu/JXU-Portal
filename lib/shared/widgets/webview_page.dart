@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
 
@@ -159,7 +160,7 @@ class WebViewPage extends StatefulWidget {
     this.onNavigationRequest,
     this.enableLoginQuickFill = false,
     this.emulateDingTalkEnvironment = true,
-    this.preferWebViewBackNavigation = false,
+    this.showWebViewBottomBackButton = false,
     this.onHomePressed,
     this.appBarActions = const [],
   });
@@ -171,7 +172,7 @@ class WebViewPage extends StatefulWidget {
   final WebViewNavigationRequestCallback? onNavigationRequest;
   final bool enableLoginQuickFill;
   final bool emulateDingTalkEnvironment;
-  final bool preferWebViewBackNavigation;
+  final bool showWebViewBottomBackButton;
   final VoidCallback? onHomePressed;
   final List<Widget> appBarActions;
 
@@ -185,6 +186,7 @@ class _WebViewPageState extends State<WebViewPage> {
   bool _hasShownEnvHint = false;
   bool _hasFallbackToHome = false;
   bool _allowRoutePop = false;
+  bool _canGoBackInWebView = false;
   late String _currentUrl;
   InAppWebViewController? _controller;
   (String, String)? _savedZhengfangCredentials;
@@ -293,8 +295,16 @@ class _WebViewPageState extends State<WebViewPage> {
 
     try {
       final canGoBack = await controller.canGoBack();
-      if (!canGoBack) return false;
+      if (!canGoBack) {
+        if (_canGoBackInWebView && mounted) {
+          setState(() => _canGoBackInWebView = false);
+        } else {
+          _canGoBackInWebView = false;
+        }
+        return false;
+      }
       await controller.goBack();
+      unawaited(_refreshWebViewBackState(controller));
       return true;
     } catch (error) {
       AppLogger.instance.webview(
@@ -305,21 +315,40 @@ class _WebViewPageState extends State<WebViewPage> {
     }
   }
 
-  Future<bool> _handleWillPop() async {
-    if (widget.onHomePressed != null && isServiceHallHomeUrl(_currentUrl)) {
-      widget.onHomePressed!.call();
-      return false;
-    }
-
-    if (!widget.preferWebViewBackNavigation) return true;
-    final handled = await _goBackInWebViewIfPossible();
-    return !handled;
+  Future<void> _handleAppBackPressed() async {
+    if (!mounted) return;
+    await _popRoute();
   }
 
-  Future<void> _handleBackPressed() async {
-    final shouldPopRoute = await _handleWillPop();
-    if (!shouldPopRoute || !mounted) return;
-    await _popRoute();
+  Future<void> _refreshWebViewBackState([
+    InAppWebViewController? controller,
+  ]) async {
+    final activeController = controller ?? _controller;
+    if (activeController == null || _hasError) {
+      if (_canGoBackInWebView && mounted) {
+        setState(() => _canGoBackInWebView = false);
+      } else {
+        _canGoBackInWebView = false;
+      }
+      return;
+    }
+
+    try {
+      final canGoBack = await activeController.canGoBack();
+      if (!mounted) {
+        _canGoBackInWebView = canGoBack;
+        return;
+      }
+      if (_canGoBackInWebView != canGoBack) {
+        setState(() => _canGoBackInWebView = canGoBack);
+      }
+    } catch (_) {
+      if (_canGoBackInWebView && mounted) {
+        setState(() => _canGoBackInWebView = false);
+      } else {
+        _canGoBackInWebView = false;
+      }
+    }
   }
 
   Future<void> _popRoute() async {
@@ -339,6 +368,7 @@ class _WebViewPageState extends State<WebViewPage> {
     if (_hasError) {
       setState(() {
         _hasError = false;
+        _canGoBackInWebView = false;
         _progress = 0;
       });
       return;
@@ -353,6 +383,7 @@ class _WebViewPageState extends State<WebViewPage> {
       if (!mounted) return;
       setState(() {
         _hasError = false;
+        _canGoBackInWebView = false;
         _controller = null;
         _progress = 0;
       });
@@ -694,34 +725,48 @@ class _WebViewPageState extends State<WebViewPage> {
     );
   }
 
+  Widget _buildWebViewNavigationBar() {
+    if (!widget.showWebViewBottomBackButton) {
+      return const SizedBox.shrink();
+    }
+
+    final cs = Theme.of(context).colorScheme;
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+        decoration: BoxDecoration(
+          color: cs.surface,
+          border: Border(top: BorderSide(color: cs.outlineVariant)),
+        ),
+        child: SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: _canGoBackInWebView ? _goBackInWebViewIfPossible : null,
+            icon: const Icon(Icons.arrow_back_ios_new, size: 18),
+            label: const Text('网页内返回'),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final canPopRoute = Navigator.of(context).canPop();
     final showHomeButton = widget.onHomePressed != null;
-    final shouldInterceptRoutePop =
-        widget.preferWebViewBackNavigation || showHomeButton;
-    final useHomeBackButton =
-        showHomeButton && isServiceHallHomeUrl(_currentUrl);
-    final useWebViewBackButton =
-        widget.preferWebViewBackNavigation && !useHomeBackButton;
-    final showRouteBackButton =
-        !useHomeBackButton && !useWebViewBackButton && canPopRoute;
-    final hasCustomLeading =
-        useHomeBackButton ||
-        useWebViewBackButton ||
-        showRouteBackButton ||
-        showHomeButton;
+    final showRouteBackButton = canPopRoute;
+    final hasCustomLeading = showRouteBackButton || showHomeButton;
     final leadingButtonCount = [
-      if (useHomeBackButton || useWebViewBackButton || showRouteBackButton)
-        true,
+      if (showRouteBackButton) true,
       if (showHomeButton) true,
     ].length;
 
     return PopScope<void>(
-      canPop: !shouldInterceptRoutePop || _allowRoutePop,
+      canPop: _allowRoutePop,
       onPopInvokedWithResult: (didPop, result) {
-        if (didPop || _allowRoutePop || !shouldInterceptRoutePop) return;
-        _handleBackPressed();
+        if (didPop || _allowRoutePop) return;
+        _handleAppBackPressed();
       },
       child: Scaffold(
         appBar: AppBar(
@@ -731,21 +776,11 @@ class _WebViewPageState extends State<WebViewPage> {
               ? Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (useHomeBackButton)
+                    if (showRouteBackButton)
                       IconButton(
                         icon: const Icon(Icons.arrow_back),
-                        tooltip: '返回主页',
-                        onPressed: widget.onHomePressed,
-                      )
-                    else if (useWebViewBackButton)
-                      IconButton(
-                        icon: const Icon(Icons.arrow_back),
-                        onPressed: _handleBackPressed,
-                      )
-                    else if (showRouteBackButton)
-                      IconButton(
-                        icon: const Icon(Icons.arrow_back),
-                        onPressed: _handleBackPressed,
+                        tooltip: '返回',
+                        onPressed: _handleAppBackPressed,
                       ),
                     if (showHomeButton)
                       IconButton(
@@ -863,6 +898,7 @@ class _WebViewPageState extends State<WebViewPage> {
                       ),
                       onWebViewCreated: (c) {
                         _controller = c;
+                        unawaited(_refreshWebViewBackState(c));
                         c.addJavaScriptHandler(
                           handlerName: 'ddReady',
                           callback: (args) => {'success': true},
@@ -917,6 +953,7 @@ class _WebViewPageState extends State<WebViewPage> {
                           _hasError = false;
                           _progress = 0;
                         });
+                        unawaited(_refreshWebViewBackState());
                       },
                       onLoadStop: (controller, url) async {
                         if (!mounted) return;
@@ -938,14 +975,17 @@ class _WebViewPageState extends State<WebViewPage> {
                         }
 
                         await _inspectLoadedPage(controller);
+                        await _refreshWebViewBackState(controller);
 
                         final callback = widget.onLoadStop;
                         if (callback != null) {
                           await callback(controller, _currentUrl);
                         }
                       },
-                      onUpdateVisitedHistory: (_, url, _) =>
-                          _trackCurrentUrl(url),
+                      onUpdateVisitedHistory: (controller, url, _) {
+                        _trackCurrentUrl(url);
+                        unawaited(_refreshWebViewBackState(controller));
+                      },
                       shouldOverrideUrlLoading:
                           (controller, navigationAction) async {
                             final uri = navigationAction.request.url?.uriValue;
@@ -1005,6 +1045,7 @@ class _WebViewPageState extends State<WebViewPage> {
                         if (!mounted) return;
                         setState(() {
                           _hasError = true;
+                          _canGoBackInWebView = false;
                           _controller = null;
                           _progress = 0;
                         });
@@ -1020,6 +1061,7 @@ class _WebViewPageState extends State<WebViewPage> {
                         if (!mounted) return;
                         setState(() {
                           _hasError = true;
+                          _canGoBackInWebView = false;
                           _controller = null;
                           _progress = 0;
                         });
@@ -1030,6 +1072,7 @@ class _WebViewPageState extends State<WebViewPage> {
                 ],
               ),
             ),
+            _buildWebViewNavigationBar(),
             _buildQuickFillBar(),
           ],
         ),

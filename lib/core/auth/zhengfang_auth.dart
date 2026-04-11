@@ -152,6 +152,8 @@ class ZhengfangAuth extends ChangeNotifier {
   static const _directBase = 'https://jwzx.zjxu.edu.cn/jwglxt';
 
   static const _webVpnBase = 'https://webvpn.zjxu.edu.cn';
+  static const webVpnGatewayServiceUrl =
+      'https://webvpn.zjxu.edu.cn/login?cas_login=true';
   static const _portalPrefix =
       '/http/77726476706e69737468656265737421fae05b84692a62486b468ca88d1b203b';
   static const _webVpnJwglxtPrefix = '$_portalPrefix/jwglxt';
@@ -929,6 +931,62 @@ class ZhengfangAuth extends ChangeNotifier {
     return validateWebVpnProxySession(targetUrl);
   }
 
+  Future<bool?> ensureWebVpnGatewaySession({
+    bool syncWebViewCookies = true,
+  }) async {
+    await DioClient.instance.ensureInitialized();
+    setMode(ZhengfangMode.webVpn);
+
+    final unifiedAuthActive = await UnifiedAuthService.instance.validateSession(
+      serviceUrl: webVpnGatewayServiceUrl,
+      syncWebViewCookies: false,
+    );
+    if (unifiedAuthActive != true) {
+      if (unifiedAuthActive == false) {
+        markWebVpnLoggedOut();
+      }
+      return unifiedAuthActive;
+    }
+
+    try {
+      final response = await _sendWithProxyFallback<String>(
+        label: 'WebVPN 网关会话校验',
+        request: (dio) => dio.get<String>(
+          '$_webVpnBase$_webVpnCasPath',
+          options: Options(
+            responseType: ResponseType.plain,
+            followRedirects: true,
+            validateStatus: (status) => status != null && status < 1000,
+            headers: {'Referer': '$_webVpnBase/'},
+          ),
+        ),
+      );
+
+      final html = response.data ?? '';
+      final realUrl = response.realUri.toString();
+      if (_looksLikeWebVpnAuthResponse(realUrl, html)) {
+        AppLogger.instance.auth(LogLevel.warn, 'WebVPN 网关会话恢复后仍命中登录页');
+        markWebVpnLoggedOut();
+        return false;
+      }
+
+      markWebVpnLoggedIn();
+      if (syncWebViewCookies) {
+        await syncWebVpnCookiesToWebView();
+      }
+      return true;
+    } on DioException catch (e) {
+      AppLogger.instance.auth(
+        LogLevel.warn,
+        'WebVPN 网关会话校验失败（网络异常）: ${e.type} ${e.message}',
+      );
+      return null;
+    } catch (e) {
+      AppLogger.instance.auth(LogLevel.warn, 'WebVPN 网关会话校验失败（未知异常）: $e');
+      return null;
+    }
+  }
+
   bool _looksLikeWebVpnAuthResponse(String url, String html) {
     if (isZhengfangGatewayLoginUrl(url) || isZhengfangLoginEntryUrl(url)) {
       return true;
@@ -950,10 +1008,10 @@ class ZhengfangAuth extends ChangeNotifier {
   Future<Response<String>?> _attemptWebVpnSessionRecovery(
     String probeUrl,
   ) async {
-    final unifiedAuthActive = await UnifiedAuthService.instance.validateSession(
+    final webVpnReady = await ensureWebVpnGatewaySession(
       syncWebViewCookies: false,
     );
-    if (unifiedAuthActive != true && !isWebVpnLoggedIn) {
+    if (webVpnReady != true) {
       return null;
     }
 

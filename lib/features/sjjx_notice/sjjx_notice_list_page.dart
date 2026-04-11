@@ -25,17 +25,29 @@ class SjjxNoticeListPage extends StatefulWidget {
 }
 
 class _SjjxNoticeListPageState extends State<SjjxNoticeListPage> {
+  static const _pageSize = 20;
+
+  final ScrollController _scrollController = ScrollController();
   List<SjjxNotice> _allNotices = [];
   List<SjjxNotice> _filteredNotices = [];
+  List<SjjxNotice> _visibleNotices = [];
   List<String> _categories = [];
   String? _selectedCategory;
   bool _loading = true;
+  bool _loadingMore = false;
   String? _error;
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_handleScroll);
     _loadNotices();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadNotices() async {
@@ -53,6 +65,8 @@ class _SjjxNoticeListPageState extends State<SjjxNoticeListPage> {
         _filteredNotices = _selectedCategory == null
             ? notices
             : notices.where((n) => n.category == _selectedCategory).toList();
+        _visibleNotices = _filteredNotices.take(_pageSize).toList();
+        _loadingMore = false;
         _loading = false;
       });
     } catch (e) {
@@ -93,6 +107,25 @@ class _SjjxNoticeListPageState extends State<SjjxNoticeListPage> {
             ? _allNotices
             : _allNotices.where((n) => n.category == category).toList();
       }
+      _visibleNotices = _filteredNotices.take(_pageSize).toList();
+      _loadingMore = false;
+    });
+  }
+
+  void _handleScroll() {
+    if (!_scrollController.hasClients || _loading || _loadingMore) return;
+    final position = _scrollController.position;
+    if (position.pixels < position.maxScrollExtent - 240) return;
+    if (_visibleNotices.length >= _filteredNotices.length) return;
+
+    setState(() {
+      _loadingMore = true;
+      final nextCount = (_visibleNotices.length + _pageSize).clamp(
+        0,
+        _filteredNotices.length,
+      );
+      _visibleNotices = _filteredNotices.take(nextCount).toList();
+      _loadingMore = false;
     });
   }
 
@@ -158,6 +191,7 @@ class _SjjxNoticeListPageState extends State<SjjxNoticeListPage> {
                     onRefresh: _loadNotices,
                     child: _filteredNotices.isEmpty
                         ? ListView(
+                            controller: _scrollController,
                             children: [
                               SizedBox(
                                 height:
@@ -175,24 +209,34 @@ class _SjjxNoticeListPageState extends State<SjjxNoticeListPage> {
                             ],
                           )
                         : ListView.builder(
+                            controller: _scrollController,
                             padding: const EdgeInsets.symmetric(horizontal: 16),
-                            itemCount: _filteredNotices.length,
+                            itemCount:
+                                _visibleNotices.length + (_loadingMore ? 1 : 0),
                             itemBuilder: (context, index) {
+                              if (index >= _visibleNotices.length) {
+                                return const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 16),
+                                  child: Center(
+                                    child: CircularProgressIndicator(),
+                                  ),
+                                );
+                              }
                               return Padding(
                                 padding: const EdgeInsets.only(bottom: 10),
                                 child: _NoticeCard(
-                                  notice: _filteredNotices[index],
+                                  notice: _visibleNotices[index],
                                   colorScheme: cs,
                                   onTap: () {
                                     context.pushNamed(
                                       'external-webview',
                                       extra: {
-                                        'title': _filteredNotices[index].title,
-                                        'url': _filteredNotices[index].url,
+                                        'title': _visibleNotices[index].title,
+                                        'url': _visibleNotices[index].url,
                                         'emulateDingTalkEnvironment': false,
                                         'requireWebVpnProtection':
                                             shouldOpenSjjxNoticeViaWebVpn(
-                                              _filteredNotices[index].url,
+                                              _visibleNotices[index].url,
                                             ),
                                       },
                                     );

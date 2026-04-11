@@ -53,6 +53,7 @@ class _CampusCardPaymentPageState extends State<CampusCardPaymentPage> {
       url: CampusCardService.paymentCodeServiceHallUrl,
       serviceUrl: CampusCardService.serviceHallCasServiceUrl,
       loginDescription: '统一认证登录后可直接进入建行消费码',
+      showWebViewBottomBackButton: true,
       onHomePressed: () => context.goNamed('home'),
       onLoadStop: CampusCardPaymentPage.autoClickServiceHallPaymentCode,
       appBarActions: [

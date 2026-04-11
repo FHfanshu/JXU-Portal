@@ -56,6 +56,12 @@ void main() {
         ),
         'https://webvpn.zjxu.edu.cn/https/77726476706e69737468656265737421fcfe439d3720264a74109ce29d51367b2b47/Info/Thirdparty/ssoFromDingDing',
       );
+      expect(
+        ZhengfangAuth.instance.buildWebVpnProxyUrl(
+          'http://sjjx.zjxu.edu.cn/sjjx/morenews.aspx?NewsType=gonggao',
+        ),
+        'https://webvpn.zjxu.edu.cn/http/77726476706e69737468656265737421e3fd4b84692a62486b468ca88d1b203b/sjjx/morenews.aspx?NewsType=gonggao',
+      );
     });
   });
 
