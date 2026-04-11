@@ -36,7 +36,6 @@ const _webViewConsoleNoiseKeywords = <String>[
   'not implemented on the current platform',
   'text input plugin',
   'inputmethodmanager',
-  'ime',
   'keyboard',
 ];
 

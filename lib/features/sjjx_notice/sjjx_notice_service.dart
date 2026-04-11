@@ -3,6 +3,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:html/parser.dart' as html_parser;
 
+import '../../core/auth/zhengfang_auth.dart';
+import '../../core/logging/app_logger.dart';
+import '../../core/network/dio_client.dart';
 import '../../core/network/network_settings.dart';
 import '../../core/network/proxy_mode.dart';
 import 'sjjx_notice_model.dart';
@@ -60,21 +63,48 @@ class SjjxNoticeService {
 
   Future<List<SjjxNotice>> fetchAllNotices() async {
     try {
-      final resp = await (await _ensureDio()).get<List<int>>(
-        _sjjxNoticeListUrl,
-      );
-      if (resp.data == null || resp.data!.isEmpty) return [];
+      AppLogger.instance.network(LogLevel.info, '开始加载实践通知列表');
+      final resp = await _getWithWebVpnFallback(_sjjxNoticeListUrl);
+      if (resp.data == null || resp.data!.isEmpty) {
+        AppLogger.instance.network(LogLevel.warn, '实践通知列表响应为空');
+        return [];
+      }
 
-      final html = gbk.decode(resp.data!);
+      final html = gbk.decode(resp.data!, allowMalformed: true);
       final notices = parseSjjxNoticeListHtml(html);
+      if (notices.isEmpty) {
+        final doc = html_parser.parse(html);
+        final title = doc.querySelector('title')?.text.trim() ?? '';
+        final itemCount = doc.querySelectorAll('.List_R02').length;
+        AppLogger.instance.network(
+          LogLevel.warn,
+          '实践通知解析结果为空: title=$title, itemCount=$itemCount, bytes=${resp.data!.length}',
+        );
+      }
+      AppLogger.instance.network(
+        LogLevel.info,
+        '实践通知列表加载成功，共 ${notices.length} 条',
+      );
 
       _cachedNotices = notices;
       return notices;
-    } catch (_) {
+    } catch (error, stackTrace) {
       final cachedNotices = _cachedNotices;
       if (cachedNotices != null) {
+        AppLogger.instance.network(
+          LogLevel.warn,
+          '实践通知加载失败，回退缓存 ${cachedNotices.length} 条',
+          error: error,
+          stackTrace: stackTrace,
+        );
         return cachedNotices;
       }
+      AppLogger.instance.network(
+        LogLevel.error,
+        '实践通知加载失败',
+        error: error,
+        stackTrace: stackTrace,
+      );
       rethrow;
     }
   }
@@ -107,5 +137,53 @@ class SjjxNoticeService {
     final created = _createDio();
     _dio = created;
     return created;
+  }
+
+  Future<Response<List<int>>> _getWithWebVpnFallback(String url) async {
+    final directDio = await _ensureDio();
+    try {
+      return await directDio.get<List<int>>(url);
+    } on DioException catch (error, stackTrace) {
+      AppLogger.instance.network(
+        LogLevel.warn,
+        '实践通知直连失败，尝试通过 WebVPN 访问: $error',
+      );
+      final webVpnReady = await ZhengfangAuth.instance
+          .validateWebVpnTargetSession(url);
+      if (webVpnReady != true) {
+        AppLogger.instance.network(
+          LogLevel.warn,
+          '实践通知 WebVPN 会话不可用，无法继续回退',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        rethrow;
+      }
+
+      try {
+        final response = await DioClient.instance.unifiedAuthDio.get<List<int>>(
+          ZhengfangAuth.instance.buildWebVpnProxyUrl(url),
+          options: Options(responseType: ResponseType.bytes),
+        );
+        AppLogger.instance.network(LogLevel.info, '实践通知已通过 WebVPN 回退加载');
+        return response;
+      } on DioException catch (fallbackError, fallbackStackTrace) {
+        AppLogger.instance.network(
+          LogLevel.error,
+          '实践通知 WebVPN 回退失败',
+          error: fallbackError,
+          stackTrace: fallbackStackTrace,
+        );
+        rethrow;
+      }
+    } catch (error, stackTrace) {
+      AppLogger.instance.network(
+        LogLevel.error,
+        '实践通知请求异常',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      rethrow;
+    }
   }
 }

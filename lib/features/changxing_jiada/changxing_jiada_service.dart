@@ -309,16 +309,17 @@ class ChangxingJiadaService {
       'file': await MultipartFile.fromFile(filePath, filename: effectiveName),
     });
 
-    final response = await DioClient.instance.dio.postUri<Map<String, dynamic>>(
-      Uri.parse(
-        _buildWebVpnUrl('https://zhx.zjxu.edu.cn/api/image/add/single'),
-      ),
-      data: formData,
-      options: Options(
-        headers: {'token': token},
-        responseType: ResponseType.json,
-      ),
-    );
+    final response = await DioClient.instance.unifiedAuthDio
+        .postUri<Map<String, dynamic>>(
+          Uri.parse(
+            _buildWebVpnUrl('https://zhx.zjxu.edu.cn/api/image/add/single'),
+          ),
+          data: formData,
+          options: Options(
+            headers: {'token': token},
+            responseType: ResponseType.json,
+          ),
+        );
 
     final json = response.data ?? <String, dynamic>{};
     final code = _extractCode(json);
@@ -621,7 +622,7 @@ class ChangxingJiadaService {
       headers['token'] = token;
     }
 
-    final response = await DioClient.instance.dio
+    final response = await DioClient.instance.unifiedAuthDio
         .requestUri<Map<String, dynamic>>(
           uri,
           data: data,

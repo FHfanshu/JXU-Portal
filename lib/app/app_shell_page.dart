@@ -26,7 +26,8 @@ class _AppShellPageState extends State<AppShellPage> {
   @override
   void didUpdateWidget(AppShellPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.navigationShell.currentIndex != oldWidget.navigationShell.currentIndex) {
+    if (widget.navigationShell.currentIndex !=
+        oldWidget.navigationShell.currentIndex) {
       _pageController.animateToPage(
         widget.navigationShell.currentIndex,
         duration: const Duration(milliseconds: 300),
@@ -57,10 +58,7 @@ class _AppShellPageState extends State<AppShellPage> {
         onPageChanged: (index) {
           _onDestinationSelected(index);
         },
-        children: const [
-          HomePage(),
-          MyPage(),
-        ],
+        children: const [HomePage(), MyPage()],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: widget.navigationShell.currentIndex,

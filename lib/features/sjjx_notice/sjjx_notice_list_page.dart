@@ -4,6 +4,19 @@ import 'package:go_router/go_router.dart';
 import 'sjjx_notice_model.dart';
 import 'sjjx_notice_service.dart';
 
+bool shouldOpenSjjxNoticeViaWebVpn(String url) {
+  final uri = Uri.tryParse(url);
+  if (uri == null) return false;
+
+  switch (uri.host.toLowerCase()) {
+    case 'jwc.zjxu.edu.cn':
+    case 'sjjx.zjxu.edu.cn':
+      return true;
+  }
+
+  return false;
+}
+
 class SjjxNoticeListPage extends StatefulWidget {
   const SjjxNoticeListPage({super.key});
 
@@ -177,6 +190,10 @@ class _SjjxNoticeListPageState extends State<SjjxNoticeListPage> {
                                         'title': _filteredNotices[index].title,
                                         'url': _filteredNotices[index].url,
                                         'emulateDingTalkEnvironment': false,
+                                        'requireWebVpnProtection':
+                                            shouldOpenSjjxNoticeViaWebVpn(
+                                              _filteredNotices[index].url,
+                                            ),
                                       },
                                     );
                                   },

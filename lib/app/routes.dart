@@ -22,6 +22,7 @@ import '../features/changxing_jiada/changxing_jiada_page.dart';
 import '../features/changxing_jiada/changxing_leave_form_page.dart';
 import '../features/changxing_jiada/changxing_overtime_form_page.dart';
 import '../features/changxing_jiada/changxing_jiada_model.dart';
+import '../shared/widgets/unified_auth_protected_webview_page.dart';
 import '../shared/widgets/webvpn_protected_webview_page.dart';
 import '../shared/widgets/webview_page.dart';
 
@@ -163,6 +164,29 @@ final GoRouter appRouter = GoRouter(
         final extra = Map<String, dynamic>.from(
           (state.extra as Map?) ?? const <String, dynamic>{},
         );
+        if (extra['requireUnifiedAuthProtection'] == true) {
+          return UnifiedAuthProtectedWebViewPage(
+            title: extra['title'] ?? '网页',
+            url: extra['url'] ?? '',
+            serviceUrl:
+                extra['serviceUrl'] as String? ??
+                (extra['url'] as String? ?? ''),
+            loginDescription:
+                extra['loginDescription'] as String? ?? '需要先完成统一认证',
+            emulateDingTalkEnvironment:
+                extra['emulateDingTalkEnvironment'] == true,
+            preferWebViewBackNavigation:
+                extra['preferWebViewBackNavigation'] == true,
+          );
+        }
+        if (extra['requireWebVpnProtection'] == true) {
+          return WebVpnProtectedWebViewPage(
+            title: extra['title'] ?? '网页',
+            url: extra['url'] ?? '',
+            preferWebViewBackNavigation:
+                extra['preferWebViewBackNavigation'] == true,
+          );
+        }
         return WebViewPage(
           title: extra['title'] ?? '网页',
           url: extra['url'] ?? '',

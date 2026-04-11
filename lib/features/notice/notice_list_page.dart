@@ -1,8 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/logging/app_logger.dart';
 import 'notice_model.dart';
 import 'notice_service.dart';
+
+bool shouldOpenNoticeViaWebVpn(String url) {
+  final uri = Uri.tryParse(url);
+  if (uri == null) return false;
+
+  return uri.host.toLowerCase() == 'sjjx.zjxu.edu.cn';
+}
+
+bool shouldOpenNoticeViaUnifiedAuth(String url) {
+  final uri = Uri.tryParse(url);
+  if (uri == null) return false;
+
+  return uri.host.toLowerCase() == 'jwc.zjxu.edu.cn';
+}
 
 class NoticeListPage extends StatefulWidget {
   const NoticeListPage({super.key});
@@ -56,7 +71,13 @@ class _NoticeListPageState extends State<NoticeListPage> {
         _loading = false;
         _hasMore = true;
       });
-    } catch (_) {
+    } catch (error, stackTrace) {
+      AppLogger.instance.ui(
+        LogLevel.error,
+        '通知公告页首屏加载失败',
+        error: error,
+        stackTrace: stackTrace,
+      );
       if (!mounted) return;
       setState(() {
         _notices = [];
@@ -82,7 +103,13 @@ class _NoticeListPageState extends State<NoticeListPage> {
         }
         _loadingMore = false;
       });
-    } catch (_) {
+    } catch (error, stackTrace) {
+      AppLogger.instance.ui(
+        LogLevel.error,
+        '通知公告页分页加载失败: page=$_currentPage',
+        error: error,
+        stackTrace: stackTrace,
+      );
       if (!mounted) return;
       _currentPage--;
       setState(() => _loadingMore = false);
@@ -180,6 +207,14 @@ class _NoticeListPageState extends State<NoticeListPage> {
                           'title': notice.title,
                           'url': notice.url,
                           'emulateDingTalkEnvironment': false,
+                          'requireUnifiedAuthProtection':
+                              shouldOpenNoticeViaUnifiedAuth(notice.url),
+                          'requireWebVpnProtection': shouldOpenNoticeViaWebVpn(
+                            notice.url,
+                          ),
+                          'serviceUrl': notice.url,
+                          'loginDescription': '通知公告可直连访问，但需先完成统一认证',
+                          'preferWebViewBackNavigation': true,
                         },
                       );
                     },

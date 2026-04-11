@@ -160,12 +160,17 @@ class DioClient {
               LogLevel.info,
               '← $code ${requestOptions.method} $uri ($duration) → $location',
             );
-            if (location.contains('login_slogin') ||
-                location.contains('kaptcha') ||
-                location.contains('webvpn.zjxu.edu.cn/login')) {
+            final normalizedLocation = location.toLowerCase();
+            if (normalizedLocation.contains('webvpn.zjxu.edu.cn/login')) {
               AppLogger.instance.network(
                 LogLevel.warn,
-                '检测到重定向到登录/验证码页面，可能未在校园网环境',
+                '检测到重定向到 WebVPN 登录页，当前会话可能已失效或需要重新认证',
+              );
+            } else if (normalizedLocation.contains('login_slogin') ||
+                normalizedLocation.contains('kaptcha')) {
+              AppLogger.instance.network(
+                LogLevel.warn,
+                '检测到重定向到教务登录/验证码页，可能未在校园网环境或需要重新登录',
               );
             }
           } else if (AppLogger.instance.config.value.networkVerboseEnabled) {

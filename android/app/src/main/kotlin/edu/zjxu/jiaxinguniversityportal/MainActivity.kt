@@ -20,7 +20,7 @@ class MainActivity : FlutterActivity() {
         private const val SHORTCUT_SCHEME = "jiaxinguniversityportal"
         private const val SHORTCUT_HOST = "shortcut"
         private const val CAMPUS_CARD_PAYMENT_ACTION = "campus-card-payment"
-        private const val CAMPUS_CARD_PAYMENT_SHORTCUT_ID = "campus_card_payment"
+        private const val CAMPUS_CARD_PAYMENT_SHORTCUT_ID = "campus_card_payment_pinned"
     }
 
     private var pendingShortcutAction: String? = null
@@ -109,18 +109,21 @@ class MainActivity : FlutterActivity() {
     private fun requestCampusCardPaymentShortcut(): Boolean {
         val shortcutIntent = createCampusCardPaymentIntent()
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N_MR1) {
             val shortcutManager = getSystemService(ShortcutManager::class.java) ?: return false
-            if (!shortcutManager.isRequestPinShortcutSupported) return false
+            val shortcut = buildCampusCardPaymentShortcutInfo(shortcutIntent)
 
-            val shortcut = ShortcutInfo.Builder(this, CAMPUS_CARD_PAYMENT_SHORTCUT_ID)
-                .setShortLabel(getString(R.string.shortcut_campus_card_payment_short_label))
-                .setLongLabel(getString(R.string.shortcut_campus_card_payment_long_label))
-                .setIcon(Icon.createWithResource(this, R.mipmap.ic_launcher))
-                .setIntent(shortcutIntent)
-                .build()
+            // Some launchers only fully recognize pinned shortcuts after the same
+            // shortcutId has been published as a dynamic shortcut first.
+            shortcutManager.removeDynamicShortcuts(listOf(CAMPUS_CARD_PAYMENT_SHORTCUT_ID))
+            shortcutManager.addDynamicShortcuts(listOf(shortcut))
 
-            return shortcutManager.requestPinShortcut(shortcut, null)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                if (!shortcutManager.isRequestPinShortcutSupported) return false
+                return shortcutManager.requestPinShortcut(shortcut, null)
+            }
+
+            return true
         }
 
         @Suppress("DEPRECATION")
@@ -139,6 +142,15 @@ class MainActivity : FlutterActivity() {
             },
         )
         return true
+    }
+
+    private fun buildCampusCardPaymentShortcutInfo(shortcutIntent: Intent): ShortcutInfo {
+        return ShortcutInfo.Builder(this, CAMPUS_CARD_PAYMENT_SHORTCUT_ID)
+            .setShortLabel(getString(R.string.shortcut_campus_card_payment_short_label))
+            .setLongLabel(getString(R.string.shortcut_campus_card_payment_long_label))
+            .setIcon(Icon.createWithResource(this, R.mipmap.ic_launcher))
+            .setIntent(shortcutIntent)
+            .build()
     }
 
     private fun createCampusCardPaymentIntent(): Intent {
