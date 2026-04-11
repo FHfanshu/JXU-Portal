@@ -167,6 +167,8 @@ final GoRouter appRouter = GoRouter(
           title: extra['title'] ?? '网页',
           url: extra['url'] ?? '',
           enableLoginQuickFill: extra['enableLoginQuickFill'] == true,
+          emulateDingTalkEnvironment:
+              extra['emulateDingTalkEnvironment'] == true,
         );
       },
     ),

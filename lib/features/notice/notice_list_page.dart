@@ -17,6 +17,7 @@ class _NoticeListPageState extends State<NoticeListPage> {
   bool _loadingMore = false;
   bool _hasMore = true;
   int _currentPage = 1;
+  String? _error;
   final _scrollController = ScrollController();
 
   @override
@@ -42,31 +43,53 @@ class _NoticeListPageState extends State<NoticeListPage> {
   }
 
   Future<void> _loadNotices() async {
-    setState(() => _loading = true);
-    _currentPage = 1;
-    final notices = await NoticeService.instance.fetchNotices();
-    if (!mounted) return;
     setState(() {
-      _notices = notices;
-      _loading = false;
-      _hasMore = true;
+      _loading = true;
+      _error = null;
     });
+    _currentPage = 1;
+    try {
+      final notices = await NoticeService.instance.fetchNotices();
+      if (!mounted) return;
+      setState(() {
+        _notices = notices;
+        _loading = false;
+        _hasMore = true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _notices = [];
+        _loading = false;
+        _hasMore = false;
+        _error = '无法连接教务处通知公告';
+      });
+    }
   }
 
   Future<void> _loadMore() async {
     if (_loadingMore) return;
     setState(() => _loadingMore = true);
     _currentPage++;
-    final more = await NoticeService.instance.fetchMoreNotices(_currentPage);
-    if (!mounted) return;
-    setState(() {
-      if (more.isEmpty) {
-        _hasMore = false;
-      } else {
-        _notices.addAll(more);
-      }
-      _loadingMore = false;
-    });
+    try {
+      final more = await NoticeService.instance.fetchMoreNotices(_currentPage);
+      if (!mounted) return;
+      setState(() {
+        if (more.isEmpty) {
+          _hasMore = false;
+        } else {
+          _notices.addAll(more);
+        }
+        _loadingMore = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      _currentPage--;
+      setState(() => _loadingMore = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('加载更多失败，请稍后重试')));
+    }
   }
 
   @override
@@ -81,6 +104,30 @@ class _NoticeListPageState extends State<NoticeListPage> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
+          : _error != null
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.error_outline, size: 64, color: Colors.grey[400]),
+                  const SizedBox(height: 12),
+                  Text(
+                    '加载失败',
+                    style: TextStyle(fontSize: 16, color: Colors.grey[500]),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _error!,
+                    style: TextStyle(fontSize: 13, color: Colors.grey[400]),
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton.tonal(
+                    onPressed: _loadNotices,
+                    child: const Text('重试'),
+                  ),
+                ],
+              ),
+            )
           : _notices.isEmpty
           ? Center(
               child: Column(
@@ -128,8 +175,12 @@ class _NoticeListPageState extends State<NoticeListPage> {
                     colorScheme: cs,
                     onTap: () {
                       context.pushNamed(
-                        'news-detail',
-                        extra: {'title': notice.title, 'url': notice.url},
+                        'external-webview',
+                        extra: {
+                          'title': notice.title,
+                          'url': notice.url,
+                          'emulateDingTalkEnvironment': false,
+                        },
                       );
                     },
                   );

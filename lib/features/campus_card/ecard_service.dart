@@ -96,13 +96,16 @@ class EcardService {
       final body = await _post('/QueryAccAuth.aspx', params);
       final json = _tryParseJson(body);
       if (json != null && json['Code'] == '1') {
-        AppLogger.instance.info('ecard 认证成功');
+        AppLogger.instance.network(LogLevel.info, 'ecard 认证成功');
         return true;
       }
-      AppLogger.instance.info('ecard 认证失败: ${json?['Msg'] ?? body}');
+      AppLogger.instance.network(
+        LogLevel.warn,
+        'ecard 认证失败: ${json?['Msg'] ?? body}',
+      );
       return false;
     } catch (e) {
-      AppLogger.instance.error('ecard 认证异常: $e');
+      AppLogger.instance.network(LogLevel.error, 'ecard 认证异常: $e');
       return false;
     }
   }
@@ -119,7 +122,7 @@ class EcardService {
       }
       return null;
     } catch (e) {
-      AppLogger.instance.error('ecard 账户信息查询异常: $e');
+      AppLogger.instance.network(LogLevel.error, 'ecard 账户信息查询异常: $e');
       return null;
     }
   }
@@ -132,15 +135,15 @@ class EcardService {
       if (json != null && json['Code'] == '1') {
         final qrCode = json['QRCode'] as String? ?? '';
         if (qrCode.isNotEmpty) {
-          AppLogger.instance.info('ecard 二维码获取成功');
+          AppLogger.instance.network(LogLevel.info, 'ecard 二维码获取成功');
           return qrCode;
         }
       }
       final msg = json?['Msg'] as String? ?? '未知错误';
-      AppLogger.instance.info('ecard 二维码获取失败: $msg');
+      AppLogger.instance.network(LogLevel.warn, 'ecard 二维码获取失败: $msg');
       return null;
     } catch (e) {
-      AppLogger.instance.error('ecard 二维码获取异常: $e');
+      AppLogger.instance.network(LogLevel.error, 'ecard 二维码获取异常: $e');
       return null;
     }
   }
@@ -151,7 +154,9 @@ class EcardService {
       final body = await _post('/GetQRCodeInfo.aspx', params);
       final json = _tryParseJson(body);
       if (json != null) {
-        AppLogger.instance.debug('ecard QR状态响应: $json');
+        if (AppLogger.instance.config.value.networkVerboseEnabled) {
+          AppLogger.instance.network(LogLevel.debug, 'ecard QR状态响应: $json');
+        }
         final code = json['Code'] as String? ?? '';
         final msg = json['Msg'] as String? ?? '';
         final tradeAmt = json['TradeAmt'] as String? ?? '';
@@ -165,7 +170,7 @@ class EcardService {
       }
       return const QRCodeInfoResult(code: '', msg: '解析失败');
     } catch (e) {
-      AppLogger.instance.debug('ecard 二维码状态查询异常: $e');
+      AppLogger.instance.network(LogLevel.warn, 'ecard 二维码状态查询异常: $e');
       return QRCodeInfoResult(code: '', msg: e.toString());
     }
   }

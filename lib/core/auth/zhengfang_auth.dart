@@ -14,6 +14,7 @@ import '../network/dio_client.dart';
 import '../network/network_settings.dart';
 import '../network/proxy_mode.dart';
 import 'credential_store.dart';
+import 'unified_auth.dart';
 
 bool isZhengfangGatewayLoginUrl(String currentUrl) {
   final raw = currentUrl.trim();
@@ -183,7 +184,9 @@ class ZhengfangAuth extends ChangeNotifier {
   bool _webVpnSessionActive = false;
   String? currentStudentId;
 
-  Dio get _dio => DioClient.instance.dio;
+  Dio get _dio => _mode == ZhengfangMode.webVpn
+      ? DioClient.instance.unifiedAuthDio
+      : DioClient.instance.dio;
   PersistCookieJar get _cookieJar => DioClient.instance.zhengfangCookieJar;
   PersistCookieJar get _webVpnCookieJar =>
       DioClient.instance.unifiedAuthCookieJar;
@@ -232,7 +235,7 @@ class ZhengfangAuth extends ChangeNotifier {
       return await request(_dio);
     } catch (error) {
       if (!_shouldRetryWithSystemProxyForAny(error)) rethrow;
-      AppLogger.instance.info('$label 直连失败，尝试通过系统代理重试');
+      AppLogger.instance.auth(LogLevel.warn, '$label 直连失败，尝试通过系统代理重试');
       final fallbackDio = _createProxyFallbackDio();
       try {
         return await request(fallbackDio);
@@ -376,7 +379,6 @@ class ZhengfangAuth extends ChangeNotifier {
         dio,
         ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
       );
-      AppLogger.instance.debug('正在测试教务系统直连...');
       final resp = await dio.get<String>('$_directOrigin$_directLoginPath');
       final statusCode = resp.statusCode ?? 0;
 
@@ -385,18 +387,22 @@ class ZhengfangAuth extends ChangeNotifier {
       final isRedirectedToWebVpn = location.contains('webvpn.zjxu.edu.cn');
 
       if (isRedirectedToWebVpn) {
-        AppLogger.instance.info('教务系统直连: 被重定向到 WebVPN，需要 WebVPN 登录');
+        AppLogger.instance.auth(
+          LogLevel.warn,
+          '教务系统直连: 被重定向到 WebVPN，需要 WebVPN 登录',
+        );
         return false;
       }
 
       final reachable =
           statusCode < 400 && statusCode != 302 && statusCode != 303;
-      AppLogger.instance.info(
+      AppLogger.instance.auth(
+        LogLevel.info,
         '教务系统直连: ${reachable ? "可达" : "不可达"} ($statusCode)',
       );
       return reachable;
     } catch (e) {
-      AppLogger.instance.info('教务系统直连不可达: $e');
+      AppLogger.instance.auth(LogLevel.warn, '教务系统直连不可达: $e');
       return false;
     }
   }
@@ -416,12 +422,11 @@ class ZhengfangAuth extends ChangeNotifier {
         dio,
         ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
       );
-      AppLogger.instance.debug('正在测试 WebVPN 连通性...');
       final resp = await dio.get<String>('$_webVpnBase$_webVpnCasPath');
-      AppLogger.instance.info('WebVPN 连通性: ${resp.statusCode}');
+      AppLogger.instance.auth(LogLevel.info, 'WebVPN 连通性: ${resp.statusCode}');
       return resp.statusCode != null && resp.statusCode! < 400;
     } catch (e) {
-      AppLogger.instance.info('WebVPN 不可达: $e');
+      AppLogger.instance.auth(LogLevel.warn, 'WebVPN 不可达: $e');
       return false;
     }
   }
@@ -441,7 +446,6 @@ class ZhengfangAuth extends ChangeNotifier {
   /// 调用方应视为登录已成功。
   Future<Uint8List> fetchWebVpnCasCaptcha() async {
     await DioClient.instance.ensureInitialized();
-    AppLogger.instance.debug('正在获取 WebVPN CAS 登录页面...');
     // WebVPN /login 会 302 重定向到 CAS 登录页面，需要跟随重定向
     final loginUri = '$_webVpnBase$_webVpnCasPath';
     final pageResp = await _sendWithProxyFallback<String>(
@@ -462,13 +466,11 @@ class ZhengfangAuth extends ChangeNotifier {
     if (casLoginUrl.startsWith('/')) {
       casLoginUrl = '$_webVpnBase$casLoginUrl';
     }
-    AppLogger.instance.debug('CAS 登录页面: $casLoginUrl');
-
     // 检测 WebVPN 已认证状态：如果 302 重定向目标不是 CAS 登录页
     // (例如重定向到 getUserDetail)，说明 WebVPN 会话已有效
     final casLoginUrlLower = casLoginUrl.toLowerCase();
     if (!casLoginUrlLower.contains('/cas/login')) {
-      AppLogger.instance.info('WebVPN 已有有效会话，重定向到: $casLoginUrl');
+      AppLogger.instance.auth(LogLevel.info, 'WebVPN 已有有效会话，直接复用认证');
       // 跟随重定向链建立完整 session
       await _followWebVpnRedirectChain(loginUri, casLoginUrl);
       await syncWebVpnCookiesToWebView();
@@ -489,22 +491,14 @@ class ZhengfangAuth extends ChangeNotifier {
     );
 
     final html = casResp.data ?? '';
-    _cachedCasExecution = _extractHiddenField(html, 'execution');
-    _cachedCasLt = _extractHiddenField(html, 'lt');
+    _cachedCasExecution = extractHiddenField(html, 'execution');
+    _cachedCasLt = extractHiddenField(html, 'lt');
     _cachedCasLoginUrl = casLoginUrl; // 保存 CAS 登录 URL
 
     // CAS 登录页面中的 __vpn_host_crypt_key 不是用于密码加密的
     // 实际加密密钥是 main.js 中的 aes1='key_value_123456'
     _cachedAesKey = 'key_value_123456';
     _cachedAesIv = '0987654321123456';
-    AppLogger.instance.debug(
-      'WebVPN CAS AES key: ${_cachedAesKey?.substring(0, _cachedAesKey!.length > 10 ? 10 : _cachedAesKey!.length) ?? "null"}..., iv: ${_cachedAesIv?.substring(0, _cachedAesIv!.length > 10 ? 10 : _cachedAesIv!.length) ?? "null"}...',
-    );
-
-    AppLogger.instance.debug(
-      'WebVPN CAS execution: ${_cachedCasExecution?.length ?? 0} 字符, lt: ${_cachedCasLt?.length ?? 0} 字符',
-    );
-
     final ts = DateTime.now().millisecondsSinceEpoch;
     // 验证码 URL：实际是 /cas/captcha.html，不是 /cas/login/captcha.html
     // 从 CAS 登录页面 path 提取 base 路径
@@ -518,7 +512,6 @@ class ZhengfangAuth extends ChangeNotifier {
       path: '$casBasePath/captcha.html',
       queryParameters: {'vpn-1': '', 't': ts.toString()},
     ).toString();
-    AppLogger.instance.debug('正在获取 WebVPN CAS 验证码 from: $captchaUri');
     final resp = await _sendWithProxyFallback<List<int>>(
       label: 'WebVPN CAS 验证码',
       request: (dio) => dio.get<List<int>>(
@@ -545,7 +538,10 @@ class ZhengfangAuth extends ChangeNotifier {
       throw CaptchaException('WebVPN 验证码加载失败，请稍后重试');
     }
 
-    AppLogger.instance.info('WebVPN CAS 验证码获取成功, ${data.length} 字节');
+    AppLogger.instance.auth(
+      LogLevel.info,
+      'WebVPN CAS 验证码获取成功, ${data.length} 字节',
+    );
     return data;
   }
 
@@ -563,14 +559,9 @@ class ZhengfangAuth extends ChangeNotifier {
         return WebVpnCasFailure('WebVPN 登录上下文缺失，请刷新验证码后重试');
       }
 
-      AppLogger.instance.info('正在通过 WebVPN CAS 登录 (一卡通认证)...');
       final loginUri = _cachedCasLoginUrl ?? '$_webVpnBase$_webVpnCasPath';
 
       final encryptedPassword = _encryptPasswordWithAes(password);
-
-      AppLogger.instance.debug(
-        'WebVPN CAS 登录参数: username=$username, veriyCode=$captcha, lt=${lt != null && lt.length > 10 ? lt.substring(0, 10) : lt ?? ""}..., execution=${execution.length > 20 ? execution.substring(0, 20) : execution}...',
-      );
 
       final resp = await _sendWithProxyFallback<String>(
         label: 'WebVPN CAS 登录',
@@ -597,10 +588,6 @@ class ZhengfangAuth extends ChangeNotifier {
       final statusCode = resp.statusCode;
       final location = resp.headers.value('location') ?? '';
       final html = resp.data ?? '';
-      AppLogger.instance.debug(
-        'WebVPN CAS 响应: $statusCode, location=$location',
-      );
-
       // 302/303 重定向且不是回到 login 页面 = 成功
       if ((statusCode == 302 || statusCode == 303) && location.isNotEmpty) {
         final lowerLocation = location.toLowerCase();
@@ -611,17 +598,15 @@ class ZhengfangAuth extends ChangeNotifier {
           _cachedCasLt = null;
           _cachedCasLoginUrl = null;
           markWebVpnLoggedIn();
-          AppLogger.instance.info('WebVPN CAS 认证成功，正在同步 Cookie...');
           await syncWebVpnCookiesToWebView();
-          AppLogger.instance.info('WebVPN CAS 认证成功，Cookie 同步完成');
+          AppLogger.instance.auth(LogLevel.info, 'WebVPN CAS 认证成功，Cookie 同步完成');
           return WebVpnCasSuccess();
         }
       }
 
       // 登录失败，检查错误信息
-      AppLogger.instance.debug('WebVPN CAS 登录失败 ($statusCode)，检查错误...');
       // 重新提取 execution 以备重试
-      final newExec = _extractHiddenField(html, 'execution');
+      final newExec = extractHiddenField(html, 'execution');
       if (newExec.isNotEmpty) _cachedCasExecution = newExec;
 
       // 检查错误消息
@@ -630,22 +615,26 @@ class ZhengfangAuth extends ChangeNotifier {
         return WebVpnCasFailure('验证码错误或已过期，请刷新后重试');
       }
       if (lowerHtml.contains('密码错误') || lowerHtml.contains('用户名或密码错误')) {
-        AppLogger.instance.info('WebVPN CAS 一卡通密码错误');
+        AppLogger.instance.auth(LogLevel.warn, 'WebVPN CAS 一卡通密码错误');
         return WebVpnCasFailure('一卡通账号或密码错误');
       }
 
-      AppLogger.instance.info('WebVPN CAS 认证未知状态: $statusCode');
+      AppLogger.instance.auth(LogLevel.warn, 'WebVPN CAS 认证未知状态: $statusCode');
       return WebVpnCasFailure('WebVPN 登录失败，请检查账号密码和验证码');
     } on DioException catch (e) {
-      AppLogger.instance.error('WebVPN CAS 网络异常: ${e.type} ${e.message}');
+      AppLogger.instance.auth(
+        LogLevel.error,
+        'WebVPN CAS 网络异常: ${e.type} ${e.message}',
+      );
       return WebVpnCasFailure('网络异常: ${e.message}');
     } catch (e) {
-      AppLogger.instance.error('WebVPN CAS 异常: $e');
+      AppLogger.instance.auth(LogLevel.error, 'WebVPN CAS 异常: $e');
       return WebVpnCasFailure('登录异常: $e');
     }
   }
 
-  String _extractHiddenField(String html, String fieldName) {
+  @visibleForTesting
+  String extractHiddenField(String html, String fieldName) {
     final pattern = RegExp(
       'name=["\']$fieldName["\'][^>]*value=["\']([^"\']+)["\']',
       caseSensitive: false,
@@ -658,7 +647,7 @@ class ZhengfangAuth extends ChangeNotifier {
     var key = _cachedAesKey;
     var iv = _cachedAesIv;
     if (key == null || iv == null || key.isEmpty || iv.isEmpty) {
-      AppLogger.instance.info('AES 密钥为空，使用原始密码');
+      AppLogger.instance.auth(LogLevel.warn, 'AES 密钥为空，使用原始密码');
       return password;
     }
 
@@ -671,14 +660,7 @@ class ZhengfangAuth extends ChangeNotifier {
       final ivBytes = Uint8List.fromList(utf8.encode(iv));
       final input = Uint8List.fromList(utf8.encode(password));
 
-      AppLogger.instance.debug(
-        'AES encrypt: key=${keyBytes.length}bytes, iv=${ivBytes.length}bytes, input=${input.length}bytes',
-      );
-
       final paddedInput = _pkcs7Pad(input, 16);
-      AppLogger.instance.debug(
-        'AES encrypt: paddedInput=${paddedInput.length}bytes',
-      );
 
       final cipher = CBCBlockCipher(AESEngine())
         ..init(true, ParametersWithIV(KeyParameter(keyBytes), ivBytes));
@@ -688,15 +670,13 @@ class ZhengfangAuth extends ChangeNotifier {
         cipher.processBlock(paddedInput, offset, output, offset);
       }
 
-      AppLogger.instance.debug('AES encrypt: output=${output.length}bytes');
-
       final buffer = StringBuffer();
       for (final byte in output) {
         buffer.write(byte.toRadixString(16).padLeft(2, '0').toUpperCase());
       }
       return buffer.toString();
     } catch (e) {
-      AppLogger.instance.error('AES 加密失败: $e');
+      AppLogger.instance.auth(LogLevel.error, 'AES 加密失败: $e');
       return password;
     }
   }
@@ -725,9 +705,6 @@ class ZhengfangAuth extends ChangeNotifier {
     for (final uri in uris) {
       try {
         final cookies = await _webVpnCookieJar.loadForRequest(uri);
-        AppLogger.instance.debug(
-          '同步 WebVPN Cookie ${uri.host}: ${cookies.map((c) => c.name).join(', ')}',
-        );
         for (final cookie in cookies) {
           final domain = (cookie.domain ?? '').trim();
           await cookieManager.setCookie(
@@ -744,7 +721,7 @@ class ZhengfangAuth extends ChangeNotifier {
           );
         }
       } catch (e) {
-        AppLogger.instance.error('同步 WebVPN Cookie 失败: $e');
+        AppLogger.instance.auth(LogLevel.error, '同步 WebVPN Cookie 失败: $e');
       }
     }
   }
@@ -766,9 +743,6 @@ class ZhengfangAuth extends ChangeNotifier {
       try {
         final cookies = await _cookieJar.loadForRequest(uri);
         await _clearWebViewCookiesForUri(cookieManager, uri, cookies);
-        AppLogger.instance.debug(
-          '同步教务系统 Cookie ${uri.host}: ${cookies.map((c) => c.name).join(', ')}',
-        );
         for (final cookie in cookies) {
           final domain = (cookie.domain ?? '').trim();
           await cookieManager.setCookie(
@@ -787,11 +761,11 @@ class ZhengfangAuth extends ChangeNotifier {
         final syncedCookies = await cookieManager.getCookies(
           url: WebUri('${uri.scheme}://${uri.host}${uri.path}'),
         );
-        AppLogger.instance.debug(
-          'WebView 教务 Cookie ${uri.host}: ${syncedCookies.map((c) => c.name).join(', ')}',
-        );
+        if (syncedCookies.isEmpty) {
+          continue;
+        }
       } catch (e) {
-        AppLogger.instance.error('同步教务系统 Cookie 失败: $e');
+        AppLogger.instance.auth(LogLevel.error, '同步教务系统 Cookie 失败: $e');
       }
     }
   }
@@ -807,9 +781,6 @@ class ZhengfangAuth extends ChangeNotifier {
     final cookieHeader = cookies
         .map((cookie) => '${cookie.name}=${cookie.value}')
         .join('; ');
-    AppLogger.instance.debug(
-      '构建教务 WebView 请求头: ${cookies.map((c) => c.name).join(', ')}',
-    );
 
     return {
       if (cookieHeader.isNotEmpty) 'Cookie': cookieHeader,
@@ -865,17 +836,20 @@ class ZhengfangAuth extends ChangeNotifier {
           statusCode == 200 && looksLikeZhengfangLoginHtml(html);
 
       if (redirectedToLogin || loginPageReturned) {
-        AppLogger.instance.info('教务会话已失效，自动标记为未登录');
+        AppLogger.instance.auth(LogLevel.warn, '教务会话已失效，自动标记为未登录');
         markLoggedOut();
         return false;
       }
 
       return true;
     } on DioException catch (e) {
-      AppLogger.instance.info('教务会话校验失败（网络异常）: ${e.type} ${e.message}');
+      AppLogger.instance.auth(
+        LogLevel.warn,
+        '教务会话校验失败（网络异常）: ${e.type} ${e.message}',
+      );
       return null;
     } catch (e) {
-      AppLogger.instance.info('教务会话校验失败（未知异常）: $e');
+      AppLogger.instance.auth(LogLevel.warn, '教务会话校验失败（未知异常）: $e');
       return null;
     }
   }
@@ -908,59 +882,42 @@ class ZhengfangAuth extends ChangeNotifier {
       final resolvedLocation = location.isEmpty
           ? ''
           : Uri.parse(probeUrl).resolve(location).toString();
+      final html = response.data ?? '';
+      final realUrl = response.realUri.toString();
 
       final redirectedToLogin =
           (statusCode == 302 || statusCode == 303) &&
           isZhengfangLoginEntryUrl(resolvedLocation);
-      final landedOnLogin = isZhengfangLoginEntryUrl(
-        response.realUri.toString(),
-      );
+      final landedOnLogin = _looksLikeWebVpnAuthResponse(realUrl, html);
 
       if (redirectedToLogin || landedOnLogin) {
-        // 如果 WebVPN CAS 已认证，CAS SSO 可能能自动完成重定向链，
-        // 跟随重定向确认是否能到达目标页面
-        if (isWebVpnLoggedIn &&
-            redirectedToLogin &&
-            resolvedLocation.toLowerCase().contains('/cas/login')) {
-          AppLogger.instance.debug(
-            'WebVPN 目标重定向到 CAS，但 WebVPN 已认证，尝试跟随 SSO 重定向链...',
-          );
+        final canAttemptSso =
+            UnifiedAuthService.instance.isLoggedIn || isWebVpnLoggedIn;
+        if (canAttemptSso) {
           try {
-            await _followWebVpnRedirectChain(probeUrl, resolvedLocation);
-            // SSO 重定向链走完后再次探测目标
-            final retryResp = await _sendWithProxyFallback<String>(
-              label: 'WebVPN 目标会话二次校验',
-              request: (dio) => dio.get<String>(
-                probeUrl,
-                options: Options(
-                  responseType: ResponseType.plain,
-                  followRedirects: true,
-                  validateStatus: (status) => status != null && status < 1000,
-                  headers: {'Referer': '$_webVpnBase/'},
-                ),
-              ),
-            );
-            final retryLandedOnLogin = isZhengfangLoginEntryUrl(
-              retryResp.realUri.toString(),
-            );
-            if (!retryLandedOnLogin) {
-              AppLogger.instance.info('WebVPN 目标会话 SSO 已自动恢复: $probeUrl');
+            final retryResp = await _attemptWebVpnSessionRecovery(probeUrl);
+            if (retryResp != null) {
+              AppLogger.instance.auth(LogLevel.info, 'WebVPN 目标会话 SSO 已自动恢复');
+              markWebVpnLoggedIn();
               return true;
             }
-          } catch (e) {
-            AppLogger.instance.debug('WebVPN 目标 SSO 跟随失败: $e');
-          }
+          } catch (_) {}
         }
-        AppLogger.instance.info('WebVPN 目标会话已失效: $probeUrl');
+        AppLogger.instance.auth(LogLevel.warn, 'WebVPN 目标会话已失效: $probeUrl');
+        markWebVpnLoggedOut();
         return false;
       }
 
+      markWebVpnLoggedIn();
       return true;
     } on DioException catch (e) {
-      AppLogger.instance.info('WebVPN 目标会话校验失败（网络异常）: ${e.type} ${e.message}');
+      AppLogger.instance.auth(
+        LogLevel.warn,
+        'WebVPN 目标会话校验失败（网络异常）: ${e.type} ${e.message}',
+      );
       return null;
     } catch (e) {
-      AppLogger.instance.info('WebVPN 目标会话校验失败（未知异常）: $e');
+      AppLogger.instance.auth(LogLevel.warn, 'WebVPN 目标会话校验失败（未知异常）: $e');
       return null;
     }
   }
@@ -968,6 +925,54 @@ class ZhengfangAuth extends ChangeNotifier {
   Future<bool?> validateWebVpnTargetSession(String targetUrl) async {
     setMode(ZhengfangMode.webVpn);
     return validateWebVpnProxySession(targetUrl);
+  }
+
+  bool _looksLikeWebVpnAuthResponse(String url, String html) {
+    if (isZhengfangGatewayLoginUrl(url) || isZhengfangLoginEntryUrl(url)) {
+      return true;
+    }
+
+    final uri = Uri.tryParse(url);
+    if (uri == null || uri.host.toLowerCase() != 'webvpn.zjxu.edu.cn') {
+      return false;
+    }
+
+    final path = uri.path.toLowerCase();
+    if (path == '/' || path == '/m/portal' || path == '/login') {
+      return true;
+    }
+
+    return looksLikeUnifiedAuthLoginHtml(html);
+  }
+
+  Future<Response<String>?> _attemptWebVpnSessionRecovery(
+    String probeUrl,
+  ) async {
+    final unifiedAuthActive = await UnifiedAuthService.instance.validateSession(
+      syncWebViewCookies: false,
+    );
+    if (unifiedAuthActive != true && !isWebVpnLoggedIn) {
+      return null;
+    }
+
+    final retryResp = await _sendWithProxyFallback<String>(
+      label: 'WebVPN 目标会话二次校验',
+      request: (dio) => dio.get<String>(
+        probeUrl,
+        options: Options(
+          responseType: ResponseType.plain,
+          followRedirects: true,
+          validateStatus: (status) => status != null && status < 1000,
+          headers: {'Referer': '$_webVpnBase/'},
+        ),
+      ),
+    );
+    final retryHtml = retryResp.data ?? '';
+    final retryUrl = retryResp.realUri.toString();
+    if (_looksLikeWebVpnAuthResponse(retryUrl, retryHtml)) {
+      return null;
+    }
+    return retryResp;
   }
 
   /// 跟随 WebVPN CAS 重定向链建立 session
@@ -980,7 +985,6 @@ class ZhengfangAuth extends ChangeNotifier {
       nextUrl = '$_webVpnBase$nextUrl';
     }
     for (var i = 0; i < 8; i++) {
-      AppLogger.instance.debug('WebVPN CAS 重定向 [$i]: $nextUrl');
       final resp = await _sendWithProxyFallback<String>(
         label: 'WebVPN CAS 重定向链',
         request: (dio) => dio.get<String>(
@@ -1015,7 +1019,8 @@ class ZhengfangAuth extends ChangeNotifier {
         .ensureInitialized()
         .then((_) => DioClient.instance.updateBaseUrl(_baseUrl))
         .catchError((_) {});
-    AppLogger.instance.info(
+    AppLogger.instance.auth(
+      LogLevel.info,
       '教务系统连接模式切换为: ${mode == ZhengfangMode.direct ? "直连" : "WebVPN"}',
     );
     notifyListeners();
@@ -1025,9 +1030,6 @@ class ZhengfangAuth extends ChangeNotifier {
     await DioClient.instance.ensureInitialized();
     await _refreshLoginContext();
     final ts = DateTime.now().millisecondsSinceEpoch;
-    AppLogger.instance.debug(
-      '正在获取教务系统验证码 [${_mode == ZhengfangMode.direct ? "直连" : "WebVPN"}]...',
-    );
     final resp = await _sendWithProxyFallback<List<int>>(
       label: '教务验证码',
       request: (dio) => dio.get<List<int>>(
@@ -1042,13 +1044,13 @@ class ZhengfangAuth extends ChangeNotifier {
 
     final location = resp.headers.value('location') ?? '';
     if (isZhengfangGatewayLoginUrl(location)) {
-      AppLogger.instance.info('教务验证码请求被重定向到 WebVPN 登录页');
+      AppLogger.instance.auth(LogLevel.warn, '教务验证码请求被重定向到 WebVPN 登录页');
       throw CaptchaException('WebVPN 认证已过期，请重新登录');
     }
 
     final contentType = resp.headers.value('content-type') ?? '';
     if (contentType.contains('text/html')) {
-      AppLogger.instance.info('验证码返回 HTML，可能未在校园网环境');
+      AppLogger.instance.auth(LogLevel.warn, '验证码返回 HTML，可能未在校园网环境');
       if (_mode == ZhengfangMode.direct) {
         throw CaptchaException('无法连接到教务系统，请确保在校园网环境或已连接VPN');
       } else {
@@ -1064,7 +1066,7 @@ class ZhengfangAuth extends ChangeNotifier {
     final data = Uint8List.fromList(bytes);
 
     if (!_isValidImage(data)) {
-      AppLogger.instance.info('验证码数据非有效图片，可能未在校园网环境');
+      AppLogger.instance.auth(LogLevel.warn, '验证码数据非有效图片，可能未在校园网环境');
       if (_mode == ZhengfangMode.direct) {
         throw CaptchaException('无法连接到教务系统，请确保在校园网环境或已连接VPN');
       } else {
@@ -1072,7 +1074,7 @@ class ZhengfangAuth extends ChangeNotifier {
       }
     }
 
-    AppLogger.instance.info('验证码获取成功, ${data.length} 字节');
+    AppLogger.instance.auth(LogLevel.info, '验证码获取成功, ${data.length} 字节');
     return data;
   }
 
@@ -1092,14 +1094,13 @@ class ZhengfangAuth extends ChangeNotifier {
             await CredentialStore.instance.saveZhengfangSession(username);
           }
           _sessionActive = true;
-          AppLogger.instance.info('检测到教务已有有效会话，跳过登录请求');
+          AppLogger.instance.auth(LogLevel.info, '检测到教务已有有效会话，跳过登录请求');
           notifyListeners();
           return LoginSuccess();
         }
         return LoginFailure('初始化登录参数失败，请刷新验证码后重试');
       }
 
-      AppLogger.instance.debug('正在获取 RSA 公钥...');
       final keyResp = await _sendWithProxyFallback<Map<String, dynamic>>(
         label: '教务登录公钥',
         request: (dio) => dio.get<Map<String, dynamic>>(
@@ -1125,21 +1126,8 @@ class ZhengfangAuth extends ChangeNotifier {
           exponent.isEmpty) {
         return LoginFailure('获取登录公钥失败，请稍后重试');
       }
-      AppLogger.instance.debug('公钥获取成功，正在加密密码...');
 
       final encryptedPwd = _encryptPassword(password, modulus, exponent);
-
-      await _sendWithProxyFallback<void>(
-        label: '教务登出旧会话',
-        request: (dio) => dio.post<void>(
-          '$_baseUrl/xtgl/login_logoutAccount.html',
-          options: Options(
-            headers: {'Referer': _loginPageUrl, 'Origin': _origin},
-          ),
-        ),
-      );
-
-      AppLogger.instance.debug('正在发送教务系统登录请求...');
       final loginResp = await _sendWithProxyFallback<String>(
         label: '教务登录',
         request: (dio) => dio.post<String>(
@@ -1165,27 +1153,31 @@ class ZhengfangAuth extends ChangeNotifier {
       final location = loginResp.headers.value('location') ?? '';
       final html = loginResp.data ?? '';
       if (isZhengfangGatewayLoginUrl(location)) {
-        AppLogger.instance.info('教务系统登录被重定向到 WebVPN 登录页');
+        AppLogger.instance.auth(LogLevel.warn, '教务系统登录被重定向到 WebVPN 登录页');
         return LoginFailure('WebVPN 认证已过期，请重新登录');
       }
-      if (_isLoginSuccess(loginResp.statusCode, location, html)) {
+      if (isLoginSuccess(loginResp.statusCode, location, html)) {
         currentStudentId = username;
         _sessionActive = true;
         _cachedCsrfToken = null;
         await CredentialStore.instance.saveZhengfangSession(username);
-        AppLogger.instance.info(
+        AppLogger.instance.auth(
+          LogLevel.info,
           '教务系统登录成功 [${_mode == ZhengfangMode.direct ? "直连" : "WebVPN"}]',
         );
         notifyListeners();
         return LoginSuccess();
       }
 
-      final msg = _extractLoginFailureMessage(html);
-      AppLogger.instance.info('教务系统登录失败: $msg');
+      final msg = extractLoginFailureMessage(html);
+      AppLogger.instance.auth(LogLevel.warn, '教务系统登录失败: $msg');
       return LoginFailure(msg);
     } on DioException catch (e) {
       _cachedCsrfToken = null;
-      AppLogger.instance.error('教务系统登录网络异常: ${e.type} ${e.message}');
+      AppLogger.instance.auth(
+        LogLevel.error,
+        '教务系统登录网络异常: ${e.type} ${e.message}',
+      );
       return LoginFailure('网络错误：${e.message}');
     } catch (e) {
       _cachedCsrfToken = null;
@@ -1253,7 +1245,6 @@ class ZhengfangAuth extends ChangeNotifier {
   }
 
   Future<void> _refreshLoginContext() async {
-    AppLogger.instance.debug('正在刷新教务系统登录上下文...');
     await _refreshCsrfToken();
   }
 
@@ -1322,7 +1313,6 @@ class ZhengfangAuth extends ChangeNotifier {
   }
 
   Future<String> _refreshCsrfToken() async {
-    AppLogger.instance.debug('正在获取 CSRF Token...');
     _contextIndicatesLoggedIn = false;
     final pageResp = await _sendWithProxyFallback<String>(
       label: '教务登录页上下文',
@@ -1338,12 +1328,15 @@ class ZhengfangAuth extends ChangeNotifier {
     final statusCode = pageResp.statusCode ?? 0;
     final location = pageResp.headers.value('location') ?? '';
     if (isZhengfangGatewayLoginUrl(location)) {
-      AppLogger.instance.info('检测到 WebVPN 登录页重定向，当前认证已过期');
+      AppLogger.instance.auth(LogLevel.warn, '检测到 WebVPN 登录页重定向，当前认证已过期');
       markLoggedOut();
       throw CaptchaException('WebVPN 认证已过期，请重新登录');
     }
-    if (_isLoginSuccess(statusCode, location, '')) {
-      AppLogger.instance.info('检测到 302 重定向到首页，旧会话可能已过期，清除 Cookie 后重新获取登录页');
+    if (isLoginSuccess(statusCode, location, '')) {
+      AppLogger.instance.auth(
+        LogLevel.warn,
+        '检测到 302 重定向到首页，旧会话可能已过期，清除 Cookie 后重新获取登录页',
+      );
       await _clearZhengfangCookies();
       _sessionActive = false;
       _cachedCsrfToken = null;
@@ -1362,47 +1355,49 @@ class ZhengfangAuth extends ChangeNotifier {
 
       final retryLocation = retryResp.headers.value('location') ?? '';
       if (isZhengfangGatewayLoginUrl(retryLocation)) {
-        AppLogger.instance.info('清除 Cookie 后跳转到 WebVPN 登录页，需要重新认证');
+        AppLogger.instance.auth(
+          LogLevel.warn,
+          '清除 Cookie 后跳转到 WebVPN 登录页，需要重新认证',
+        );
         markLoggedOut();
         throw CaptchaException('WebVPN 认证已过期，请重新登录');
       }
-      if (_isLoginSuccess(retryResp.statusCode, retryLocation, '')) {
+      if (isLoginSuccess(retryResp.statusCode, retryLocation, '')) {
         _sessionActive = true;
         _cachedCsrfToken = null;
         _contextIndicatesLoggedIn = true;
-        AppLogger.instance.info('清除 Cookie 后仍检测到有效会话');
+        AppLogger.instance.auth(LogLevel.info, '清除 Cookie 后仍检测到有效会话');
         notifyListeners();
         return '';
       }
 
       final retryHtml = retryResp.data ?? '';
-      final retryToken = _extractCsrfFromHtml(retryHtml);
+      final retryToken = extractCsrfFromHtml(retryHtml);
       if (retryToken.isNotEmpty) {
         _cachedCsrfToken = retryToken;
-        AppLogger.instance.debug('CSRF Token 重新获取成功: ${retryToken.length} 字符');
         _contextIndicatesLoggedIn = false;
         return retryToken;
       }
 
-      AppLogger.instance.info('清除 Cookie 后仍无法获取 CSRF Token');
+      AppLogger.instance.auth(LogLevel.warn, '清除 Cookie 后仍无法获取 CSRF Token');
       _contextIndicatesLoggedIn = false;
       return '';
     }
 
     final pageHtml = pageResp.data ?? '';
-    final token = _extractCsrfFromHtml(pageHtml);
+    final token = extractCsrfFromHtml(pageHtml);
     _cachedCsrfToken = token;
     if (token.isEmpty) {
-      AppLogger.instance.info('CSRF Token 为空，可能连接异常');
+      AppLogger.instance.auth(LogLevel.warn, 'CSRF Token 为空，可能连接异常');
       _contextIndicatesLoggedIn = false;
     } else {
-      AppLogger.instance.debug('CSRF Token 获取成功: ${token.length} 字符');
       _contextIndicatesLoggedIn = false;
     }
     return token;
   }
 
-  String _extractCsrfFromHtml(String html) {
+  @visibleForTesting
+  String extractCsrfFromHtml(String html) {
     final matchById = RegExp(
       r'''id=["']csrftoken["'][^>]*value=["']([^"']+)["']''',
     ).firstMatch(html);
@@ -1412,7 +1407,8 @@ class ZhengfangAuth extends ChangeNotifier {
     return (matchById?.group(1) ?? matchByName?.group(1) ?? '').trim();
   }
 
-  bool _isLoginSuccess(int? statusCode, String location, String html) {
+  @visibleForTesting
+  bool isLoginSuccess(int? statusCode, String location, String html) {
     if (statusCode == 302 || statusCode == 303) {
       if (isZhengfangLoginEntryUrl(location)) return false;
       return isZhengfangAuthenticatedUrl(location);
@@ -1421,13 +1417,14 @@ class ZhengfangAuth extends ChangeNotifier {
         html.contains('/xtgl/index_cxYhxxIndex.html');
   }
 
-  String _extractLoginFailureMessage(String html) {
+  @visibleForTesting
+  String extractLoginFailureMessage(String html) {
     final tipMatch = RegExp(
       r'''id=["']tips["'][^>]*>([\s\S]*?)</[^>]+>''',
       caseSensitive: false,
     ).firstMatch(html);
     if (tipMatch != null) {
-      final message = _decodeHtmlEntities(
+      final message = decodeHtmlEntities(
         (tipMatch.group(1) ?? '').replaceAll(RegExp(r'<[^>]+>'), '').trim(),
       );
       if (message.isNotEmpty) return message;
@@ -1438,15 +1435,21 @@ class ZhengfangAuth extends ChangeNotifier {
     return '登录失败，请检查用户名、密码和验证码';
   }
 
-  String _decodeHtmlEntities(String value) {
-    return value
-        .replaceAll('&nbsp;', ' ')
-        .replaceAll('&lt;', '<')
-        .replaceAll('&gt;', '>')
-        .replaceAll('&quot;', '"')
-        .replaceAll('&#39;', "'")
-        .replaceAll('&amp;', '&')
-        .trim();
+  @visibleForTesting
+  String decodeHtmlEntities(String value) {
+    var result = value.trim();
+    for (var i = 0; i < 3; i++) {
+      final decoded = result
+          .replaceAll('&nbsp;', ' ')
+          .replaceAll('&lt;', '<')
+          .replaceAll('&gt;', '>')
+          .replaceAll('&quot;', '"')
+          .replaceAll('&#39;', "'")
+          .replaceAll('&amp;', '&');
+      if (decoded == result) break;
+      result = decoded;
+    }
+    return result.trim();
   }
 
   @visibleForTesting

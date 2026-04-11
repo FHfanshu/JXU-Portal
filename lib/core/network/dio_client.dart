@@ -14,6 +14,7 @@ class DioClient {
   static const defaultZhengfangBaseUrl = 'https://jwzx.zjxu.edu.cn/jwglxt';
   static const _zhengfangCookieFolderName = '.cookies';
   static const _unifiedAuthCookieFolderName = '.cookies_unified_auth';
+  static const _requestStartTimeKey = 'app_logger_request_start_time';
 
   PersistCookieJar? _zhengfangCookieJar;
   PersistCookieJar? _unifiedAuthCookieJar;
@@ -109,7 +110,7 @@ class DioClient {
     final client = _zhengfangDio;
     if (client == null || client.options.baseUrl == baseUrl) return;
     client.options.baseUrl = baseUrl;
-    AppLogger.instance.debug('教务请求基础地址已更新为: $baseUrl');
+    AppLogger.instance.network(LogLevel.info, '教务请求基础地址已更新为: $baseUrl');
   }
 
   void _applyProxyMode(Dio client) {
@@ -139,34 +140,52 @@ class DioClient {
     client.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
-          AppLogger.instance.debug('→ ${options.method} ${options.uri}');
+          options.extra[_requestStartTimeKey] = DateTime.now();
+          if (AppLogger.instance.config.value.networkVerboseEnabled) {
+            AppLogger.instance.network(
+              LogLevel.debug,
+              '→ ${options.method} ${options.uri}',
+            );
+          }
           handler.next(options);
         },
         onResponse: (response, handler) {
           final code = response.statusCode;
-          final uri = response.requestOptions.uri;
+          final requestOptions = response.requestOptions;
+          final uri = requestOptions.uri;
+          final duration = _elapsedTimeLabel(requestOptions);
           if (code == 302 || code == 303) {
             final location = response.headers.value('location') ?? '';
-            AppLogger.instance.info('← $code $uri → $location');
+            AppLogger.instance.network(
+              LogLevel.info,
+              '← $code ${requestOptions.method} $uri ($duration) → $location',
+            );
             if (location.contains('login_slogin') ||
                 location.contains('kaptcha') ||
                 location.contains('webvpn.zjxu.edu.cn/login')) {
-              AppLogger.instance.info('检测到重定向到登录/验证码页面，可能未在校园网环境');
+              AppLogger.instance.network(
+                LogLevel.warn,
+                '检测到重定向到登录/验证码页面，可能未在校园网环境',
+              );
             }
-          } else {
-            AppLogger.instance.debug('← $code $uri');
+          } else if (AppLogger.instance.config.value.networkVerboseEnabled) {
+            AppLogger.instance.network(
+              LogLevel.debug,
+              '← $code ${requestOptions.method} $uri ($duration)',
+            );
           }
           handler.next(response);
         },
         onError: (error, handler) {
+          final duration = _elapsedTimeLabel(error.requestOptions);
           final msg =
-              '请求失败: ${error.type} - ${error.requestOptions.uri} - ${error.message}';
+              '请求失败: ${error.type} - ${error.requestOptions.method} ${error.requestOptions.uri} ($duration) - ${error.message}';
           if (error.type == DioExceptionType.connectionError ||
               error.type == DioExceptionType.connectionTimeout ||
               error.type == DioExceptionType.receiveTimeout) {
-            AppLogger.instance.debug(msg);
+            AppLogger.instance.network(LogLevel.warn, msg);
           } else {
-            AppLogger.instance.error(msg);
+            AppLogger.instance.network(LogLevel.error, msg);
           }
           handler.next(error);
         },
@@ -174,6 +193,15 @@ class DioClient {
     );
     _applyProxyMode(client);
     return client;
+  }
+
+  String _elapsedTimeLabel(RequestOptions options) {
+    final startedAt = options.extra[_requestStartTimeKey];
+    if (startedAt is! DateTime) {
+      return 'n/a';
+    }
+    final elapsed = DateTime.now().difference(startedAt).inMilliseconds;
+    return '${elapsed}ms';
   }
 
   Future<String> _resolveCookieDirectoryPath(String folderName) async {

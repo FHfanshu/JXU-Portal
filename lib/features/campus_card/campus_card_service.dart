@@ -134,4 +134,10 @@ class CampusCardService {
     _cachedBalance = balance;
     _lastUpdated = updatedAt;
   }
+
+  @visibleForTesting
+  void debugReset() {
+    _cachedBalance = null;
+    _lastUpdated = null;
+  }
 }

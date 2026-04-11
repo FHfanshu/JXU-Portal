@@ -42,11 +42,14 @@ class _CampusCardRechargePageState extends State<CampusCardRechargePage> {
     });
 
     try {
-      AppLogger.instance.info('校园卡充值：尝试原生 Intent 打开微信 H5 充值页');
+      AppLogger.instance.ui(LogLevel.info, '校园卡充值：尝试原生 Intent 打开微信 H5 充值页');
       final launched = await WeChatLauncher.openUrlInWeChat(
         CampusCardRechargePage.rechargeHomeUri.toString(),
       );
-      AppLogger.instance.info('校园卡充值：native intent launched=$launched');
+      AppLogger.instance.ui(
+        LogLevel.info,
+        '校园卡充值：native intent launched=$launched',
+      );
 
       if (launched) {
         if (!mounted) return;

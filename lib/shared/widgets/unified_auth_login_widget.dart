@@ -187,7 +187,7 @@ class _UnifiedAuthLoginWidgetState extends State<UnifiedAuthLoginWidget> {
       });
     } on WebVpnAlreadyAuthenticatedException {
       if (!mounted) return;
-      AppLogger.instance.info('WebVPN 已认证，跳过登录');
+      AppLogger.instance.auth(LogLevel.info, 'WebVPN 已认证，跳过登录');
       widget.onLoginSuccess();
       return;
     } on UnifiedAuthCaptchaException catch (error) {

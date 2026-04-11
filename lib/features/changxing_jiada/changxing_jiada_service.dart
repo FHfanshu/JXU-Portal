@@ -78,8 +78,14 @@ class ChangxingJiadaService {
   /// 前提：用户已通过 UnifiedAuthService 完成一卡通登录。
   Future<void> loginViaCas() async {
     await DioClient.instance.ensureInitialized();
-    final dio = DioClient.instance.dio;
-    AppLogger.instance.debug('畅行嘉大：开始 CAS SSO 登录...');
+    final sessionReady = await ZhengfangAuth.instance
+        .validateWebVpnTargetSession(_casLoginUrl);
+    if (sessionReady == false) {
+      AppLogger.instance.auth(LogLevel.warn, '畅行嘉大：静默复用统一认证失败，需要重新登录一卡通');
+      throw ChangxingNeedUnifiedAuthException();
+    }
+
+    final dio = DioClient.instance.unifiedAuthDio;
 
     try {
       // 1. 发起 CAS 登录，手动跟随重定向链以提取 tokenId
@@ -109,13 +115,11 @@ class ChangxingJiadaService {
             final tid = uri.queryParameters['tokenId'];
             if (tid != null && tid.isNotEmpty) {
               tokenId = tid;
-              AppLogger.instance.debug('畅行嘉大：从重定向中提取到 tokenId');
               break;
             }
           }
           if (_isWebVpnAuthEntryUrl(resolvedLocation)) {
             sawWebVpnRelay = true;
-            AppLogger.instance.debug('畅行嘉大：进入 WebVPN 登录中转，继续跟随重定向');
           }
           nextUrl = resolvedLocation;
           continue;
@@ -126,19 +130,21 @@ class ChangxingJiadaService {
         final tid = finalUri.queryParameters['tokenId'];
         if (tid != null && tid.isNotEmpty) {
           tokenId = tid;
-          AppLogger.instance.debug('畅行嘉大：从最终 URL 中提取到 tokenId');
         }
         if (tokenId == null &&
             (sawWebVpnRelay ||
                 _isWebVpnAuthResponse(finalUri.toString(), body))) {
-          AppLogger.instance.info('畅行嘉大：WebVPN session 已失效，需要重新登录一卡通');
+          AppLogger.instance.auth(
+            LogLevel.warn,
+            '畅行嘉大：WebVPN session 已失效，需要重新登录一卡通',
+          );
           throw ChangxingNeedUnifiedAuthException();
         }
         break;
       }
 
       if (tokenId == null || tokenId.isEmpty) {
-        AppLogger.instance.info('畅行嘉大：SSO 链路结束但未获取到 tokenId');
+        AppLogger.instance.auth(LogLevel.warn, '畅行嘉大：SSO 链路结束但未获取到 tokenId');
         throw ChangxingCasLoginException('畅行嘉大登录未完成，请稍后重试');
       }
 
@@ -166,9 +172,12 @@ class ChangxingJiadaService {
       }
 
       await _saveToken(jwtToken);
-      AppLogger.instance.info('畅行嘉大 CAS SSO 登录成功');
+      AppLogger.instance.auth(LogLevel.info, '畅行嘉大 CAS SSO 登录成功');
     } on DioException catch (e) {
-      AppLogger.instance.error('畅行嘉大 CAS 登录网络异常: ${e.type} ${e.message}');
+      AppLogger.instance.auth(
+        LogLevel.error,
+        '畅行嘉大 CAS 登录网络异常: ${e.type} ${e.message}',
+      );
       throw ChangxingCasLoginException('网络异常：${e.message}');
     }
   }

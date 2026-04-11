@@ -29,6 +29,16 @@ const _serviceHallHomeUrl =
 const _serviceHallHost = 'mobilehall.zjxu.edu.cn';
 const _serviceHallPath = '/mportal/start/index.html';
 const _serviceHallHomeFragment = '/business/ydd/portal/home';
+const _webViewConsoleNoiseKeywords = <String>[
+  'dingtalk bridge',
+  'weixinjsbridge',
+  '__wxjs_environment',
+  'not implemented on the current platform',
+  'text input plugin',
+  'inputmethodmanager',
+  'ime',
+  'keyboard',
+];
 
 enum WebViewQuickFillKind { zhengfang, unifiedAuth }
 
@@ -183,6 +193,22 @@ class _WebViewPageState extends State<WebViewPage> {
   WebViewQuickFillKind? _quickFillKind;
   bool _quickFillBusy = false;
 
+  LogConfig get _logConfig => AppLogger.instance.config.value;
+
+  bool get _webViewLifecycleLoggingEnabled =>
+      _logConfig.webviewLifecycleEnabled;
+
+  bool get _webViewConsoleLoggingEnabled => _logConfig.webviewConsoleEnabled;
+
+  void _logWebViewLifecycle(String message) {
+    if (!_webViewLifecycleLoggingEnabled) return;
+    AppLogger.instance.webview(LogLevel.debug, message);
+  }
+
+  bool _isNoisyConsoleMessage(String lowerMessage) {
+    return _webViewConsoleNoiseKeywords.any(lowerMessage.contains);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -228,13 +254,13 @@ class _WebViewPageState extends State<WebViewPage> {
           controllerValue != null &&
           controllerValue.isNotEmpty &&
           reportedValue != controllerValue) {
-        AppLogger.instance.debug(
+        _logWebViewLifecycle(
           'WebView load stop URL 修正: reported=$reportedValue actual=$controllerValue',
         );
       }
       return resolved;
     } catch (error) {
-      AppLogger.instance.debug('获取 WebView 当前 URL 失败：$error');
+      _logWebViewLifecycle('获取 WebView 当前 URL 失败：$error');
       return selectLoadedWebViewUrl(
         fallbackUrl: _currentUrl,
         reportedUrl: reportedValue,
@@ -272,7 +298,10 @@ class _WebViewPageState extends State<WebViewPage> {
       await controller.goBack();
       return true;
     } catch (error) {
-      AppLogger.instance.debug('WebView 返回上一页失败：$_currentUrl :: $error');
+      AppLogger.instance.webview(
+        LogLevel.warn,
+        'WebView 返回上一页失败：$_currentUrl :: $error',
+      );
       return false;
     }
   }
@@ -346,26 +375,39 @@ class _WebViewPageState extends State<WebViewPage> {
     final message = consoleMessage.message;
     final lowerMessage = message.toLowerCase();
 
-    if (lowerMessage.contains('dingtalk bridge')) {
+    if (_isNoisyConsoleMessage(lowerMessage)) {
       return;
     }
 
     if (!_hasShownEnvHint && lowerMessage.contains('notindingtalk')) {
       _hasShownEnvHint = true;
-      AppLogger.instance.info('WebView 环境提示：$_currentUrl 需要钉钉环境');
+      AppLogger.instance.webview(
+        LogLevel.info,
+        'WebView 环境提示：$_currentUrl 需要钉钉环境',
+      );
       _showHint('当前页面依赖钉钉环境，部分功能可能受限');
       return;
     }
 
-    final errorLike =
-        consoleMessage.messageLevel == ConsoleMessageLevel.ERROR ||
-        consoleMessage.messageLevel == ConsoleMessageLevel.WARNING ||
-        lowerMessage.contains('error') ||
-        lowerMessage.contains('exception') ||
-        lowerMessage.contains('failed');
+    final isErrorLevel =
+        consoleMessage.messageLevel == ConsoleMessageLevel.ERROR;
+    final isWarningLevel =
+        consoleMessage.messageLevel == ConsoleMessageLevel.WARNING;
 
-    if (errorLike) {
-      AppLogger.instance.error(
+    if (isErrorLevel || isWarningLevel) {
+      if (!_webViewConsoleLoggingEnabled && !isErrorLevel) {
+        return;
+      }
+      AppLogger.instance.webview(
+        isErrorLevel ? LogLevel.error : LogLevel.warn,
+        'WebView console [${consoleMessage.messageLevel}] $_currentUrl :: $message',
+      );
+      return;
+    }
+
+    if (_webViewConsoleLoggingEnabled) {
+      AppLogger.instance.webview(
+        LogLevel.debug,
         'WebView console [${consoleMessage.messageLevel}] $_currentUrl :: $message',
       );
     }
@@ -376,7 +418,7 @@ class _WebViewPageState extends State<WebViewPage> {
       final snapshot = await _capturePageSnapshot(controller);
       if (snapshot == null) return;
 
-      AppLogger.instance.info(
+      _logWebViewLifecycle(
         'WebView load stop: url=$_currentUrl readyState=${snapshot.readyState} title=${snapshot.title.isEmpty ? '[empty]' : snapshot.title} textLength=${snapshot.textLength} childCount=${snapshot.childCount}',
       );
 
@@ -392,7 +434,10 @@ class _WebViewPageState extends State<WebViewPage> {
         return;
       }
 
-      AppLogger.instance.error('WebView 疑似白屏：url=$_currentUrl');
+      AppLogger.instance.webview(
+        LogLevel.error,
+        'WebView 疑似白屏：url=$_currentUrl',
+      );
 
       final uri = Uri.tryParse(_currentUrl);
       final isServiceHallEntry =
@@ -405,7 +450,7 @@ class _WebViewPageState extends State<WebViewPage> {
         _fallbackToServiceHallHome(controller, '服务大厅入口未渲染，已尝试切换到首页');
       }
     } catch (error) {
-      AppLogger.instance.debug('WebView 页面快照失败：$_currentUrl :: $error');
+      _logWebViewLifecycle('WebView 页面快照失败：$_currentUrl :: $error');
     }
   }
 
@@ -543,7 +588,10 @@ class _WebViewPageState extends State<WebViewPage> {
         );
       }
     } catch (error) {
-      AppLogger.instance.error('WebView 快速填充失败: $_currentUrl :: $error');
+      AppLogger.instance.webview(
+        LogLevel.error,
+        'WebView 快速填充失败: $_currentUrl :: $error',
+      );
       _showHint('快速填充失败，请手动输入');
     } finally {
       if (mounted) {
@@ -828,7 +876,8 @@ class _WebViewPageState extends State<WebViewPage> {
                                             0)
                                       : 0)
                                 : 0;
-                            AppLogger.instance.info(
+                            AppLogger.instance.webview(
+                              LogLevel.info,
                               'wxScanQRCode 被调用, needResult=$needResult',
                             );
                             if (!mounted) {
@@ -858,7 +907,7 @@ class _WebViewPageState extends State<WebViewPage> {
                       },
                       onLoadStart: (_, url) {
                         _trackCurrentUrl(url);
-                        AppLogger.instance.info(
+                        _logWebViewLifecycle(
                           'WebView load start: $_currentUrl',
                         );
                         if (!mounted) return;
@@ -931,7 +980,7 @@ class _WebViewPageState extends State<WebViewPage> {
                         final uri = request.url.uriValue;
 
                         if (_isDeniedWeChatSdkRequest(uri)) {
-                          AppLogger.instance.info(
+                          _logWebViewLifecycle(
                             'WebView 拦截被 WebVPN 拒绝的微信 SDK，返回兼容 stub: $uri',
                           );
                           return _buildWeChatSdkStubResponse();
@@ -946,7 +995,8 @@ class _WebViewPageState extends State<WebViewPage> {
                       onReceivedHttpError: (_, request, response) {
                         if (!(request.isForMainFrame ?? false)) return;
 
-                        AppLogger.instance.error(
+                        AppLogger.instance.webview(
+                          LogLevel.error,
                           'WebView HTTP 错误: ${response.statusCode} ${response.reasonPhrase ?? ''} url=${request.url}',
                         );
 
@@ -960,7 +1010,8 @@ class _WebViewPageState extends State<WebViewPage> {
                       onReceivedError: (_, request, error) {
                         if (!(request.isForMainFrame ?? false)) return;
 
-                        AppLogger.instance.error(
+                        AppLogger.instance.webview(
+                          LogLevel.error,
                           'WebView 加载失败: code=${error.type} desc=${error.description} url=${request.url}',
                         );
 

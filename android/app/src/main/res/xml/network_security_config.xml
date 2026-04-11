@@ -6,5 +6,6 @@
         <domain includeSubdomains="true">job.zjxu.edu.cn</domain>
         <domain includeSubdomains="true">jdxljk.zjxu.edu.cn</domain>
         <domain includeSubdomains="true">lxxt.zjxu.edu.cn</domain>
+        <domain includeSubdomains="true">sjjx.zjxu.edu.cn</domain>
     </domain-config>
 </network-security-config>

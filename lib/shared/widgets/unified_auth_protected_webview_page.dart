@@ -124,11 +124,14 @@ class _UnifiedAuthProtectedWebViewPageState
     final isUnifiedAuthLogin = isUnifiedAuthLoginEntryUrl(currentUrl);
 
     if (isUnifiedAuthLogin) {
-      AppLogger.instance.debug('WebView 跳转到 CAS 登录页，尝试重新同步 Cookie');
+      AppLogger.instance.webview(
+        LogLevel.warn,
+        'WebView 跳转到 CAS 登录页，尝试重新同步 Cookie',
+      );
 
       // 如果已在重试中，或 native 已登出，直接标记登出
       if (_resyncing || !UnifiedAuthService.instance.isLoggedIn) {
-        AppLogger.instance.debug('Cookie 重同步失败，标记登出');
+        AppLogger.instance.webview(LogLevel.warn, 'Cookie 重同步失败，标记登出');
         UnifiedAuthService.instance.markLoggedOut();
         if (mounted) {
           setState(() {
@@ -148,7 +151,10 @@ class _UnifiedAuthProtectedWebViewPageState
       final retryUrl =
           extractUnifiedAuthServiceUrl(currentUrl) ??
           (currentUrl.trim().isNotEmpty ? currentUrl : widget.url);
-      AppLogger.instance.debug('Cookie 重同步完成，重新加载 WebView: $retryUrl');
+      AppLogger.instance.webview(
+        LogLevel.debug,
+        'Cookie 重同步完成，重新加载 WebView: $retryUrl',
+      );
       // 通过快捷方式快速进入时，这里的旧 controller 偶发会失效。
       // 直接重建 WebView 比继续调用旧实例更稳定。
       setState(() {

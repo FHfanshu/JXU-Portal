@@ -5,48 +5,111 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Log severity levels.
-enum LogLevel { debug, info, error }
+enum LogLevel { debug, info, warn, error }
 
-/// A single log entry.
+enum LogCategory { auth, network, webview, ui, storage, bootstrap, general }
+
+class LogConfig {
+  const LogConfig({
+    required this.minimumLevel,
+    required this.enabledCategories,
+    required this.webviewConsoleEnabled,
+    required this.webviewLifecycleEnabled,
+    required this.networkVerboseEnabled,
+  });
+
+  const LogConfig.defaults()
+    : minimumLevel = kDebugMode ? LogLevel.debug : LogLevel.info,
+      enabledCategories = const {
+        LogCategory.auth,
+        LogCategory.network,
+        LogCategory.webview,
+        LogCategory.ui,
+        LogCategory.storage,
+        LogCategory.bootstrap,
+        LogCategory.general,
+      },
+      webviewConsoleEnabled = false,
+      webviewLifecycleEnabled = true,
+      networkVerboseEnabled = false;
+
+  final LogLevel minimumLevel;
+  final Set<LogCategory> enabledCategories;
+  final bool webviewConsoleEnabled;
+  final bool webviewLifecycleEnabled;
+  final bool networkVerboseEnabled;
+
+  LogConfig copyWith({
+    LogLevel? minimumLevel,
+    Set<LogCategory>? enabledCategories,
+    bool? webviewConsoleEnabled,
+    bool? webviewLifecycleEnabled,
+    bool? networkVerboseEnabled,
+  }) {
+    return LogConfig(
+      minimumLevel: minimumLevel ?? this.minimumLevel,
+      enabledCategories: enabledCategories ?? this.enabledCategories,
+      webviewConsoleEnabled:
+          webviewConsoleEnabled ?? this.webviewConsoleEnabled,
+      webviewLifecycleEnabled:
+          webviewLifecycleEnabled ?? this.webviewLifecycleEnabled,
+      networkVerboseEnabled:
+          networkVerboseEnabled ?? this.networkVerboseEnabled,
+    );
+  }
+}
+
 class LogEntry {
+  static const String logPrefix = '[JXU]';
+
   LogEntry({
     required this.timestamp,
     required this.level,
+    required this.category,
     required this.message,
+    this.error,
+    this.stackTrace,
   });
 
   final DateTime timestamp;
   final LogLevel level;
+  final LogCategory category;
   final String message;
+  final String? error;
+  final String? stackTrace;
 
   String get formatted {
     final ts = timestamp.toIso8601String();
     final tag = level.name.toUpperCase();
-    return '[$ts] [$tag] $message';
+    final categoryTag = category.name;
+    final errorSuffix = error == null || error!.isEmpty
+        ? ''
+        : ' | error=$error';
+    final stackSuffix = stackTrace == null || stackTrace!.isEmpty
+        ? ''
+        : '\n$stackTrace';
+    return '$logPrefix [$ts] [$tag] [$categoryTag] $message$errorSuffix$stackSuffix';
   }
 
   @override
   String toString() => formatted;
 }
 
-/// Centralized logging system with PII scrubbing, file rotation, and ring
-/// buffer. All heavy I/O is compile-time gated behind [kDebugMode].
 class AppLogger {
   AppLogger._();
-  static final AppLogger instance = AppLogger._();
 
-  // ---------------------------------------------------------------------------
-  // Constants
-  // ---------------------------------------------------------------------------
+  static final AppLogger instance = AppLogger._();
 
   static const int _bufferCapacity = 500;
   static const int _retentionDays = 3;
-  static const String _prefsKey = 'app_logger_enabled';
-
-  // ---------------------------------------------------------------------------
-  // PII scrubbing patterns
-  // ---------------------------------------------------------------------------
+  static const String _prefsEnabledKey = 'app_logger_enabled';
+  static const String _prefsMinLevelKey = 'app_logger_min_level';
+  static const String _prefsEnabledCategoriesKey =
+      'app_logger_enabled_categories';
+  static const String _prefsWebviewConsoleKey = 'app_logger_webview_console';
+  static const String _prefsWebviewLifecycleKey =
+      'app_logger_webview_lifecycle';
+  static const String _prefsNetworkVerboseKey = 'app_logger_network_verbose';
 
   static final RegExp _studentIdPattern = RegExp(r'\d{10,12}');
   static final RegExp _mmPattern = RegExp(r'mm=[^\s&;]+');
@@ -54,29 +117,42 @@ class AppLogger {
   static final RegExp _sessionIdPattern = RegExp(r'JSESSIONID=[^\s;]+');
   static final RegExp _phonePattern = RegExp(r'1[3-9]\d{9}');
 
-  // ---------------------------------------------------------------------------
-  // State
-  // ---------------------------------------------------------------------------
-
   final ListQueue<LogEntry> _buffer = ListQueue<LogEntry>(_bufferCapacity);
 
-  /// Notifies listeners when logging is toggled.
   final ValueNotifier<bool> loggingEnabled = ValueNotifier<bool>(true);
+  final ValueNotifier<LogConfig> config = ValueNotifier<LogConfig>(
+    const LogConfig.defaults(),
+  );
 
   Directory? _logDir;
+  SharedPreferences? _prefs;
   bool _initialized = false;
 
-  // ---------------------------------------------------------------------------
-  // Lifecycle
-  // ---------------------------------------------------------------------------
-
-  /// Call once at app startup, after [WidgetsFlutterBinding.ensureInitialized].
   Future<void> init() async {
     if (_initialized) return;
     _initialized = true;
 
-    final prefs = await SharedPreferences.getInstance();
-    loggingEnabled.value = prefs.getBool(_prefsKey) ?? true;
+    _prefs = await SharedPreferences.getInstance();
+    final prefs = _prefs!;
+    loggingEnabled.value = prefs.getBool(_prefsEnabledKey) ?? true;
+    config.value = LogConfig(
+      minimumLevel: _parseLevel(
+        prefs.getString(_prefsMinLevelKey),
+        fallback: const LogConfig.defaults().minimumLevel,
+      ),
+      enabledCategories: _parseCategories(
+        prefs.getStringList(_prefsEnabledCategoriesKey),
+      ),
+      webviewConsoleEnabled:
+          prefs.getBool(_prefsWebviewConsoleKey) ??
+          const LogConfig.defaults().webviewConsoleEnabled,
+      webviewLifecycleEnabled:
+          prefs.getBool(_prefsWebviewLifecycleKey) ??
+          const LogConfig.defaults().webviewLifecycleEnabled,
+      networkVerboseEnabled:
+          prefs.getBool(_prefsNetworkVerboseKey) ??
+          const LogConfig.defaults().networkVerboseEnabled,
+    );
 
     if (kDebugMode) {
       try {
@@ -87,60 +163,216 @@ class AppLogger {
         }
         await _cleanupOldLogs();
       } catch (_) {
-        // File system unavailable (e.g. tests) — silently degrade.
+        // File system unavailable (e.g. tests) - silently degrade.
       }
     }
   }
 
-  /// Toggle persistent logging preference.
   Future<void> setEnabled(bool value) async {
     loggingEnabled.value = value;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_prefsKey, value);
+    final prefs = _prefs ?? await SharedPreferences.getInstance();
+    _prefs = prefs;
+    await prefs.setBool(_prefsEnabledKey, value);
   }
 
-  // ---------------------------------------------------------------------------
-  // Public API
-  // ---------------------------------------------------------------------------
+  Future<void> updateConfig(LogConfig nextConfig) async {
+    config.value = nextConfig;
+    final prefs = _prefs ?? await SharedPreferences.getInstance();
+    _prefs = prefs;
+    await prefs.setString(_prefsMinLevelKey, nextConfig.minimumLevel.name);
+    await prefs.setStringList(
+      _prefsEnabledCategoriesKey,
+      nextConfig.enabledCategories.map((category) => category.name).toList(),
+    );
+    await prefs.setBool(
+      _prefsWebviewConsoleKey,
+      nextConfig.webviewConsoleEnabled,
+    );
+    await prefs.setBool(
+      _prefsWebviewLifecycleKey,
+      nextConfig.webviewLifecycleEnabled,
+    );
+    await prefs.setBool(
+      _prefsNetworkVerboseKey,
+      nextConfig.networkVerboseEnabled,
+    );
+  }
 
-  void debug(String message) => addEntry(LogLevel.debug, message);
-  void info(String message) => addEntry(LogLevel.info, message);
-  void error(String message) => addEntry(LogLevel.error, message);
-
-  /// Read-only view of the in-memory ring buffer.
   List<LogEntry> get entries => List<LogEntry>.unmodifiable(_buffer.toList());
 
-  /// Core logging method. Checks [kDebugMode] compile-time gate, scrubs PII,
-  /// writes to both ring buffer and log file.
-  void addEntry(LogLevel level, String message) {
-    if (!kDebugMode) return;
-    if (!loggingEnabled.value) return;
+  void debug(String message) {
+    log(LogLevel.debug, LogCategory.general, message);
+  }
 
-    final scrubbed = _scrub(message);
+  void info(String message) {
+    log(LogLevel.info, LogCategory.general, message);
+  }
+
+  void warn(String message) {
+    log(LogLevel.warn, LogCategory.general, message);
+  }
+
+  void error(String message, {Object? error, StackTrace? stackTrace}) {
+    log(
+      LogLevel.error,
+      LogCategory.general,
+      message,
+      error: error,
+      stackTrace: stackTrace,
+    );
+  }
+
+  void log(
+    LogLevel level,
+    LogCategory category,
+    String message, {
+    Object? error,
+    StackTrace? stackTrace,
+    bool force = false,
+  }) {
+    if (!kDebugMode && !force) return;
+    if (!loggingEnabled.value && !force) return;
+
+    final activeConfig = config.value;
+    if (!_shouldLog(level, category, activeConfig, force: force)) {
+      return;
+    }
+
     final entry = LogEntry(
       timestamp: DateTime.now(),
       level: level,
-      message: scrubbed,
+      category: category,
+      message: _scrub(message),
+      error: error == null ? null : _scrub('$error'),
+      stackTrace: stackTrace == null ? null : _scrub('$stackTrace'),
     );
 
-    // Ring buffer eviction.
     if (_buffer.length >= _bufferCapacity) {
       _buffer.removeFirst();
     }
     _buffer.addLast(entry);
 
-    // Console output.
     debugPrint(entry.formatted);
-
-    // Fire-and-forget file append.
     _appendToFile(entry);
   }
 
-  // ---------------------------------------------------------------------------
-  // PII scrubbing
-  // ---------------------------------------------------------------------------
+  void auth(
+    LogLevel level,
+    String message, {
+    Object? error,
+    StackTrace? stackTrace,
+    bool force = false,
+  }) {
+    log(
+      level,
+      LogCategory.auth,
+      message,
+      error: error,
+      stackTrace: stackTrace,
+      force: force,
+    );
+  }
 
-  /// Replace PII tokens with [REDACTED].
+  void network(
+    LogLevel level,
+    String message, {
+    Object? error,
+    StackTrace? stackTrace,
+    bool force = false,
+  }) {
+    log(
+      level,
+      LogCategory.network,
+      message,
+      error: error,
+      stackTrace: stackTrace,
+      force: force,
+    );
+  }
+
+  void webview(
+    LogLevel level,
+    String message, {
+    Object? error,
+    StackTrace? stackTrace,
+    bool force = false,
+  }) {
+    log(
+      level,
+      LogCategory.webview,
+      message,
+      error: error,
+      stackTrace: stackTrace,
+      force: force,
+    );
+  }
+
+  void ui(
+    LogLevel level,
+    String message, {
+    Object? error,
+    StackTrace? stackTrace,
+    bool force = false,
+  }) {
+    log(
+      level,
+      LogCategory.ui,
+      message,
+      error: error,
+      stackTrace: stackTrace,
+      force: force,
+    );
+  }
+
+  void storage(
+    LogLevel level,
+    String message, {
+    Object? error,
+    StackTrace? stackTrace,
+    bool force = false,
+  }) {
+    log(
+      level,
+      LogCategory.storage,
+      message,
+      error: error,
+      stackTrace: stackTrace,
+      force: force,
+    );
+  }
+
+  void bootstrap(
+    LogLevel level,
+    String message, {
+    Object? error,
+    StackTrace? stackTrace,
+    bool force = false,
+  }) {
+    log(
+      level,
+      LogCategory.bootstrap,
+      message,
+      error: error,
+      stackTrace: stackTrace,
+      force: force,
+    );
+  }
+
+  bool _shouldLog(
+    LogLevel level,
+    LogCategory category,
+    LogConfig activeConfig, {
+    required bool force,
+  }) {
+    if (force || level == LogLevel.error) {
+      return true;
+    }
+    if (level.index < activeConfig.minimumLevel.index) {
+      return false;
+    }
+    return activeConfig.enabledCategories.contains(category);
+  }
+
   String _scrub(String input) {
     var result = input;
     result = result.replaceAll(_sessionIdPattern, 'JSESSIONID=[REDACTED]');
@@ -151,9 +383,32 @@ class AppLogger {
     return result;
   }
 
-  // ---------------------------------------------------------------------------
-  // File I/O (debug-only)
-  // ---------------------------------------------------------------------------
+  LogLevel _parseLevel(String? name, {required LogLevel fallback}) {
+    for (final level in LogLevel.values) {
+      if (level.name == name) {
+        return level;
+      }
+    }
+    return fallback;
+  }
+
+  Set<LogCategory> _parseCategories(List<String>? names) {
+    if (names == null || names.isEmpty) {
+      return const LogConfig.defaults().enabledCategories;
+    }
+
+    final categories = <LogCategory>{};
+    for (final name in names) {
+      for (final category in LogCategory.values) {
+        if (category.name == name) {
+          categories.add(category);
+        }
+      }
+    }
+    return categories.isEmpty
+        ? const LogConfig.defaults().enabledCategories
+        : categories;
+  }
 
   Future<void> _appendToFile(LogEntry entry) async {
     final dir = _logDir;
@@ -167,7 +422,7 @@ class AppLogger {
         flush: false,
       );
     } catch (_) {
-      // Non-blocking — swallow file write failures.
+      // Non-blocking - swallow file write failures.
     }
   }
 
@@ -206,5 +461,15 @@ class AppLogger {
     } catch (_) {
       // Best-effort cleanup.
     }
+  }
+
+  @visibleForTesting
+  void debugReset() {
+    _buffer.clear();
+    loggingEnabled.value = true;
+    config.value = const LogConfig.defaults();
+    _logDir = null;
+    _prefs = null;
+    _initialized = false;
   }
 }

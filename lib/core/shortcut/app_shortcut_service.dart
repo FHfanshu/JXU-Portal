@@ -40,9 +40,12 @@ class AppShortcutService {
     } on MissingPluginException {
       // Non-Android platforms and tests do not register the native channel.
     } on PlatformException catch (error) {
-      AppLogger.instance.error('读取快捷方式启动动作失败: ${error.message ?? error.code}');
+      AppLogger.instance.ui(
+        LogLevel.error,
+        '读取快捷方式启动动作失败: ${error.message ?? error.code}',
+      );
     } catch (error) {
-      AppLogger.instance.error('读取快捷方式启动动作异常: $error');
+      AppLogger.instance.ui(LogLevel.error, '读取快捷方式启动动作异常: $error');
     }
   }
 
@@ -57,10 +60,13 @@ class AppShortcutService {
     } on MissingPluginException {
       return false;
     } on PlatformException catch (error) {
-      AppLogger.instance.error('添加付款码快捷方式失败: ${error.message ?? error.code}');
+      AppLogger.instance.ui(
+        LogLevel.error,
+        '添加付款码快捷方式失败: ${error.message ?? error.code}',
+      );
       return false;
     } catch (error) {
-      AppLogger.instance.error('添加付款码快捷方式异常: $error');
+      AppLogger.instance.ui(LogLevel.error, '添加付款码快捷方式异常: $error');
       return false;
     }
   }

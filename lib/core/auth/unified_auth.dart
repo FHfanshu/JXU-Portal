@@ -126,19 +126,19 @@ class UnifiedAuthService extends ChangeNotifier {
         dio,
         ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
       );
-      AppLogger.instance.debug('正在测试统一认证直连...');
       final resp = await dio.get<String>(
         '$_newcaOrigin/cas/login',
         queryParameters: {'service': defaultServiceUrl},
       );
       final statusCode = resp.statusCode ?? 0;
       final reachable = statusCode > 0 && statusCode < 500;
-      AppLogger.instance.info(
+      AppLogger.instance.auth(
+        LogLevel.info,
         '统一认证直连: ${reachable ? "可达" : "不可达"} ($statusCode)',
       );
       return reachable;
     } catch (e) {
-      AppLogger.instance.info('统一认证直连不可达: $e');
+      AppLogger.instance.auth(LogLevel.warn, '统一认证直连不可达: $e');
       return false;
     }
   }
@@ -158,13 +158,15 @@ class UnifiedAuthService extends ChangeNotifier {
         dio,
         ignoreSystemProxy: NetworkSettings.instance.ignoreSystemProxy.value,
       );
-      AppLogger.instance.debug('正在测试统一认证 WebVPN 连通性...');
       final resp = await dio.get<String>('$_webVpnOrigin/login');
       final reachable = resp.statusCode != null && resp.statusCode! < 400;
-      AppLogger.instance.info('统一认证 WebVPN: ${reachable ? "可达" : "不可达"}');
+      AppLogger.instance.auth(
+        LogLevel.info,
+        '统一认证 WebVPN: ${reachable ? "可达" : "不可达"}',
+      );
       return reachable;
     } catch (e) {
-      AppLogger.instance.info('统一认证 WebVPN 不可达: $e');
+      AppLogger.instance.auth(LogLevel.warn, '统一认证 WebVPN 不可达: $e');
       return false;
     }
   }
@@ -241,7 +243,7 @@ class UnifiedAuthService extends ChangeNotifier {
           : !looksLikeUnifiedAuthLoginHtml(html);
 
       if (!hasActiveSession) {
-        AppLogger.instance.info('统一认证会话已失效，标记登出');
+        AppLogger.instance.auth(LogLevel.warn, '统一认证会话已失效，标记登出');
         markLoggedOut();
         return false;
       }
@@ -249,9 +251,7 @@ class UnifiedAuthService extends ChangeNotifier {
       if (location.isNotEmpty) {
         try {
           await _followRedirectChain(loginUri, location);
-        } catch (error) {
-          AppLogger.instance.debug('统一认证服务会话预热失败: $serviceUrl :: $error');
-        }
+        } catch (_) {}
       }
 
       final wasSessionActive = _sessionActive;
@@ -267,10 +267,13 @@ class UnifiedAuthService extends ChangeNotifier {
       }
       return true;
     } on DioException catch (error) {
-      AppLogger.instance.error('统一认证会话校验失败: ${error.type} ${error.message}');
+      AppLogger.instance.auth(
+        LogLevel.error,
+        '统一认证会话校验失败: ${error.type} ${error.message}',
+      );
       return null;
     } catch (error) {
-      AppLogger.instance.error('统一认证会话校验异常: $error');
+      AppLogger.instance.auth(LogLevel.error, '统一认证会话校验异常: $error');
       return null;
     }
   }
@@ -315,7 +318,7 @@ class UnifiedAuthService extends ChangeNotifier {
       return await request(_dio).timeout(_requestTimeout);
     } catch (error) {
       if (!_shouldRetryWithSystemProxyForAny(error)) rethrow;
-      AppLogger.instance.info('$label 直连失败，尝试通过系统代理重试');
+      AppLogger.instance.auth(LogLevel.warn, '$label 直连失败，尝试通过系统代理重试');
       final fallbackDio = _createProxyFallbackDio();
       try {
         return await request(fallbackDio).timeout(_requestTimeout);
@@ -333,7 +336,6 @@ class UnifiedAuthService extends ChangeNotifier {
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final referer = _buildLoginUri(serviceUrl).toString();
     final captchaUri = Uri.parse('$_newcaOrigin/cas/captcha.html?t=$timestamp');
-    AppLogger.instance.debug('正在获取统一认证验证码...');
     final resp = await _sendWithProxyFallback<List<int>>(
       label: '统一认证验证码',
       request: (dio) => dio.getUri<List<int>>(
@@ -347,7 +349,7 @@ class UnifiedAuthService extends ChangeNotifier {
 
     final contentType = resp.headers.value('content-type') ?? '';
     if (contentType.contains('text/html')) {
-      AppLogger.instance.info('统一认证验证码返回 HTML，可能服务不可用');
+      AppLogger.instance.auth(LogLevel.warn, '统一认证验证码返回 HTML，可能服务不可用');
       throw UnifiedAuthCaptchaException('统一认证验证码加载失败，请稍后重试');
     }
 
@@ -358,11 +360,11 @@ class UnifiedAuthService extends ChangeNotifier {
 
     final data = Uint8List.fromList(bytes);
     if (!_isValidImage(data)) {
-      AppLogger.instance.info('统一认证验证码数据非有效图片');
+      AppLogger.instance.auth(LogLevel.warn, '统一认证验证码数据非有效图片');
       throw UnifiedAuthCaptchaException('统一认证验证码无效，请刷新后重试');
     }
 
-    AppLogger.instance.info('统一认证验证码获取成功, ${data.length} 字节');
+    AppLogger.instance.auth(LogLevel.info, '统一认证验证码获取成功, ${data.length} 字节');
     return data;
   }
 
@@ -378,20 +380,18 @@ class UnifiedAuthService extends ChangeNotifier {
       if (context.lt.isEmpty || context.execution.isEmpty) {
         // 如果 session 已经在 _refreshLoginContext 中建立，直接返回成功
         if (_sessionActive) {
-          AppLogger.instance.info('统一认证已有有效 session，跳过登录');
+          AppLogger.instance.auth(LogLevel.info, '统一认证已有有效 session，跳过登录');
           currentAccount = username;
           await CredentialStore.instance.saveUnifiedAuthSession(username);
           notifyListeners();
           return UnifiedAuthLoginSuccess();
         }
-        AppLogger.instance.info('统一认证初始化上下文缺失');
+        AppLogger.instance.auth(LogLevel.warn, '统一认证初始化上下文缺失');
         return UnifiedAuthLoginFailure('统一认证初始化失败，请刷新验证码后重试');
       }
 
-      AppLogger.instance.debug('正在加密统一认证密码...');
       final encryptedPassword = _encryptPassword(password);
       final referer = _buildLoginUri(serviceUrl).toString();
-      AppLogger.instance.debug('正在发送统一认证登录请求...');
       final response = await _sendWithProxyFallback<String>(
         label: '统一认证登录',
         request: (dio) => dio.postUri<String>(
@@ -423,18 +423,21 @@ class UnifiedAuthService extends ChangeNotifier {
         currentAccount = username;
         _cachedContext = null;
         await CredentialStore.instance.saveUnifiedAuthSession(username);
-        AppLogger.instance.info('统一认证登录成功，已同步 WebView Cookie');
+        AppLogger.instance.auth(LogLevel.info, '统一认证登录成功，已同步 WebView Cookie');
         notifyListeners();
         return UnifiedAuthLoginSuccess();
       }
 
       _cachedContext = null;
       final msg = _extractLoginFailureMessage(html);
-      AppLogger.instance.info('统一认证登录失败: $msg');
+      AppLogger.instance.auth(LogLevel.warn, '统一认证登录失败: $msg');
       return UnifiedAuthLoginFailure(msg);
     } on DioException catch (error) {
       _cachedContext = null;
-      AppLogger.instance.error('统一认证登录网络异常: ${error.type} ${error.message}');
+      AppLogger.instance.auth(
+        LogLevel.error,
+        '统一认证登录网络异常: ${error.type} ${error.message}',
+      );
       return UnifiedAuthLoginFailure('统一认证网络异常：${error.message}');
     } catch (error) {
       _cachedContext = null;
@@ -473,14 +476,12 @@ class UnifiedAuthService extends ChangeNotifier {
 
     for (final uri in uris) {
       final cookies = await _cookieJar.loadForRequest(uri);
-      AppLogger.instance.debug(
-        'syncCookies ${uri.host}: ${cookies.map((c) => c.name).join(', ')}',
-      );
       for (final cookie in cookies) {
         try {
           await _setWebViewCookie(uri, cookie);
         } catch (error) {
-          AppLogger.instance.error(
+          AppLogger.instance.auth(
+            LogLevel.error,
             '同步 Cookie 失败 ${uri.host}/${cookie.name}: $error',
           );
         }
@@ -512,7 +513,7 @@ class UnifiedAuthService extends ChangeNotifier {
     try {
       await syncCookiesToWebView();
     } catch (error) {
-      AppLogger.instance.error('统一认证 Cookie 延迟同步失败: $error');
+      AppLogger.instance.auth(LogLevel.error, '统一认证 Cookie 延迟同步失败: $error');
     }
   }
 
@@ -545,7 +546,6 @@ class UnifiedAuthService extends ChangeNotifier {
     String serviceUrl,
   ) async {
     if (_sessionActive) {
-      AppLogger.instance.debug('统一认证已有活跃会话，跳过网络请求');
       return _UnifiedAuthLoginContext(
         serviceUrl: serviceUrl,
         lt: '',
@@ -555,7 +555,6 @@ class UnifiedAuthService extends ChangeNotifier {
     }
 
     await DioClient.instance.ensureInitialized();
-    AppLogger.instance.debug('正在刷新统一认证登录上下文...');
     final loginUri = _buildLoginUri(serviceUrl);
     final response = await _sendWithProxyFallback<String>(
       label: '统一认证登录上下文',
@@ -576,7 +575,7 @@ class UnifiedAuthService extends ChangeNotifier {
     if ((statusCode == 302 || statusCode == 303) && location.isNotEmpty) {
       final lowerLocation = location.toLowerCase();
       if (!lowerLocation.contains('/cas/login')) {
-        AppLogger.instance.info('统一认证已有 session，跟随重定向完成认证');
+        AppLogger.instance.auth(LogLevel.info, '统一认证已有 session，跟随重定向完成认证');
         await _followRedirectChain(loginUri, location);
         unawaited(_syncCookiesToWebViewSafely());
         _sessionActive = true;
@@ -619,9 +618,6 @@ class UnifiedAuthService extends ChangeNotifier {
         actionUri: _resolveUri(loginUri, action),
       );
       _cachedContext = context;
-      AppLogger.instance.debug(
-        '统一认证上下文: lt=${lt.length}字符 execution=${execution.length}字符',
-      );
       return context;
     }
 
@@ -636,9 +632,6 @@ class UnifiedAuthService extends ChangeNotifier {
       actionUri: _resolveUri(loginUri, action),
     );
     _cachedContext = context;
-    AppLogger.instance.debug(
-      '统一认证上下文: lt=${lt.length}字符 execution=${execution.length}字符',
-    );
     return context;
   }
 

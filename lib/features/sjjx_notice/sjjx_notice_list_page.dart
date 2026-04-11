@@ -172,10 +172,11 @@ class _SjjxNoticeListPageState extends State<SjjxNoticeListPage> {
                                   colorScheme: cs,
                                   onTap: () {
                                     context.pushNamed(
-                                      'news-detail',
+                                      'external-webview',
                                       extra: {
                                         'title': _filteredNotices[index].title,
                                         'url': _filteredNotices[index].url,
+                                        'emulateDingTalkEnvironment': false,
                                       },
                                     );
                                   },

@@ -25,4 +25,9 @@ class ThemeModeController {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_prefKey, mode.index);
   }
+
+  @visibleForTesting
+  void debugReset({ThemeMode mode = ThemeMode.system}) {
+    themeMode.value = mode;
+  }
 }

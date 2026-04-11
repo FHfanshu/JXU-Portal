@@ -18,6 +18,15 @@ class SettingsPage extends StatelessWidget {
 
   String _formatScaleFactor(double value) => '${(value * 100).round()}%';
 
+  String _formatLogLevel(LogLevel level) {
+    return switch (level) {
+      LogLevel.debug => 'Debug',
+      LogLevel.info => 'Info',
+      LogLevel.warn => 'Warn',
+      LogLevel.error => 'Error',
+    };
+  }
+
   String _formatDate(DateTime date) {
     final y = date.year.toString();
     final m = date.month.toString().padLeft(2, '0');
@@ -339,16 +348,85 @@ class SettingsPage extends StatelessWidget {
             ValueListenableBuilder<bool>(
               valueListenable: AppLogger.instance.loggingEnabled,
               builder: (context, loggingEnabled, child) {
-                return Card(
-                  clipBehavior: Clip.antiAlias,
-                  child: SwitchListTile.adaptive(
-                    title: const Text('调试日志'),
-                    subtitle: const Text('开启后记录网络请求和错误日志'),
-                    value: loggingEnabled,
-                    onChanged: (value) {
-                      AppLogger.instance.setEnabled(value);
-                    },
-                  ),
+                return ValueListenableBuilder<LogConfig>(
+                  valueListenable: AppLogger.instance.config,
+                  builder: (context, logConfig, _) {
+                    return Card(
+                      clipBehavior: Clip.antiAlias,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SwitchListTile.adaptive(
+                            title: const Text('调试日志'),
+                            subtitle: const Text('开启后记录调试期日志和异常'),
+                            value: loggingEnabled,
+                            onChanged: (value) {
+                              AppLogger.instance.setEnabled(value);
+                            },
+                          ),
+                          ListTile(
+                            title: const Text('最低日志级别'),
+                            subtitle: Text(
+                              _formatLogLevel(logConfig.minimumLevel),
+                            ),
+                            trailing: DropdownButton<LogLevel>(
+                              value: logConfig.minimumLevel,
+                              onChanged: (value) {
+                                if (value == null) return;
+                                AppLogger.instance.updateConfig(
+                                  logConfig.copyWith(minimumLevel: value),
+                                );
+                              },
+                              items: LogLevel.values
+                                  .map(
+                                    (level) => DropdownMenuItem<LogLevel>(
+                                      value: level,
+                                      child: Text(_formatLogLevel(level)),
+                                    ),
+                                  )
+                                  .toList(),
+                            ),
+                          ),
+                          SwitchListTile.adaptive(
+                            title: const Text('WebView 生命周期日志'),
+                            subtitle: const Text('页面加载、跳转和白屏探测细节'),
+                            value: logConfig.webviewLifecycleEnabled,
+                            onChanged: (value) {
+                              AppLogger.instance.updateConfig(
+                                logConfig.copyWith(
+                                  webviewLifecycleEnabled: value,
+                                ),
+                              );
+                            },
+                          ),
+                          SwitchListTile.adaptive(
+                            title: const Text('WebView 控制台日志'),
+                            subtitle: const Text('记录页面 console warning/error'),
+                            value: logConfig.webviewConsoleEnabled,
+                            onChanged: (value) {
+                              AppLogger.instance.updateConfig(
+                                logConfig.copyWith(
+                                  webviewConsoleEnabled: value,
+                                ),
+                              );
+                            },
+                          ),
+                          SwitchListTile.adaptive(
+                            title: const Text('网络详细日志'),
+                            subtitle: const Text('记录请求和响应细节，噪音较大'),
+                            value: logConfig.networkVerboseEnabled,
+                            onChanged: (value) {
+                              AppLogger.instance.updateConfig(
+                                logConfig.copyWith(
+                                  networkVerboseEnabled: value,
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 );
               },
             ),

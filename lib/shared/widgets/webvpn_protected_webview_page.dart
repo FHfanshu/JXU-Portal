@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
+import '../../core/auth/unified_auth.dart';
 import '../../core/auth/zhengfang_auth.dart';
 import '../../core/logging/app_logger.dart';
 import 'auth_required_view.dart';
@@ -67,7 +68,10 @@ class _WebVpnProtectedWebViewPageState
       ZhengfangAuth.instance.setMode(ZhengfangMode.webVpn);
       await ZhengfangAuth.instance.syncWebVpnCookiesToWebView();
     } catch (error) {
-      AppLogger.instance.error('准备 WebVPN WebView 会话失败: $error');
+      AppLogger.instance.webview(
+        LogLevel.error,
+        '准备 WebVPN WebView 会话失败: $error',
+      );
     }
 
     if (!mounted) return;
@@ -112,7 +116,10 @@ class _WebVpnProtectedWebViewPageState
     String currentUrl,
   ) async {
     if (isZhengfangGatewayLoginUrl(currentUrl)) {
-      AppLogger.instance.debug('WebVPN WebView 命中网关登录页，切换为应用内登录');
+      AppLogger.instance.webview(
+        LogLevel.warn,
+        'WebVPN WebView 命中网关登录页，切换为应用内登录',
+      );
       if (mounted) {
         setState(() => _requiresLogin = true);
       }
@@ -126,9 +133,13 @@ class _WebVpnProtectedWebViewPageState
       final uri = Uri.tryParse(currentUrl);
       final hasServiceParam =
           uri?.queryParameters.containsKey('service') ?? false;
-      if (hasServiceParam && ZhengfangAuth.instance.isLoggedIn) {
-        AppLogger.instance.debug(
-          'WebVPN WebView 命中 CAS 登录页但有 service 参数且已认证，等待 SSO 自动重定向',
+      final canReuseSession =
+          UnifiedAuthService.instance.isLoggedIn ||
+          ZhengfangAuth.instance.isWebVpnLoggedIn;
+      if (hasServiceParam && canReuseSession) {
+        AppLogger.instance.webview(
+          LogLevel.debug,
+          'WebVPN WebView 命中 CAS 登录页且可复用认证，等待 SSO 自动重定向',
         );
         // 记录首次看到 CAS 登录页的时间，如果 5 秒后仍在登录页则回退到手动登录
         if (_casLoginPageSeenAt == null) {
@@ -139,7 +150,10 @@ class _WebVpnProtectedWebViewPageState
             _casLoginPageSeenAt = null;
             // 仍在 CAS 登录页：SSO 未自动完成，回退到手动登录
             if (_requiresLogin) return;
-            AppLogger.instance.info('CAS SSO 自动重定向超时，回退到手动登录');
+            AppLogger.instance.webview(
+              LogLevel.warn,
+              'CAS SSO 自动重定向超时，回退到手动登录',
+            );
             _presentLoginPrompt(force: true);
           });
         }
@@ -147,7 +161,10 @@ class _WebVpnProtectedWebViewPageState
       }
 
       _casLoginPageSeenAt = null;
-      AppLogger.instance.debug('WebVPN WebView 命中登录页，切换为应用内登录');
+      AppLogger.instance.webview(
+        LogLevel.warn,
+        'WebVPN WebView 命中登录页，切换为应用内登录',
+      );
       if (mounted) {
         setState(() => _requiresLogin = true);
       }

@@ -36,7 +36,10 @@ class UpdateService {
     try {
       return await _fetchLatestGiteeRelease();
     } catch (error) {
-      AppLogger.instance.info('Gitee 更新检查失败，回退 GitHub: $error');
+      AppLogger.instance.network(
+        LogLevel.warn,
+        'Gitee 更新检查失败，回退 GitHub: $error',
+      );
     }
 
     return _fetchLatestGitHubRelease();
@@ -103,15 +106,34 @@ class UpdateService {
     client.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
-          AppLogger.instance.debug('→ 更新检查 ${options.uri}');
+          options.extra['requestStartTime'] = DateTime.now();
+          if (AppLogger.instance.config.value.networkVerboseEnabled) {
+            AppLogger.instance.network(LogLevel.debug, '→ 更新检查 ${options.uri}');
+          }
           handler.next(options);
         },
         onResponse: (response, handler) {
-          AppLogger.instance.debug('← 更新检查 ${response.statusCode}');
+          if (AppLogger.instance.config.value.networkVerboseEnabled) {
+            final startedAt = response.requestOptions.extra['requestStartTime'];
+            final elapsed = startedAt is DateTime
+                ? '${DateTime.now().difference(startedAt).inMilliseconds}ms'
+                : 'n/a';
+            AppLogger.instance.network(
+              LogLevel.debug,
+              '← 更新检查 ${response.statusCode} ${response.requestOptions.uri} ($elapsed)',
+            );
+          }
           handler.next(response);
         },
         onError: (error, handler) {
-          AppLogger.instance.debug('更新检查失败: ${error.message}');
+          final startedAt = error.requestOptions.extra['requestStartTime'];
+          final elapsed = startedAt is DateTime
+              ? '${DateTime.now().difference(startedAt).inMilliseconds}ms'
+              : 'n/a';
+          AppLogger.instance.network(
+            LogLevel.warn,
+            '更新检查失败: ${error.requestOptions.uri} ($elapsed) ${error.message}',
+          );
           handler.next(error);
         },
       ),

@@ -291,14 +291,21 @@ class _CampusCardPageState extends State<CampusCardPage> {
 
     final uri = Uri.tryParse(currentUrl);
     final path = uri?.path.toLowerCase();
-    AppLogger.instance.debug('校园卡 onLoadStop: $currentUrl');
+    if (AppLogger.instance.config.value.webviewLifecycleEnabled) {
+      AppLogger.instance.webview(LogLevel.debug, '校园卡 onLoadStop: $currentUrl');
+    }
     if (uri == null || !_isCampusCardStatusPage(uri)) {
-      AppLogger.instance.debug('校园卡 跳过余额提取 (host=${uri?.host}, path=$path)');
+      if (AppLogger.instance.config.value.webviewLifecycleEnabled) {
+        AppLogger.instance.webview(
+          LogLevel.debug,
+          '校园卡 跳过余额提取 (host=${uri?.host}, path=$path)',
+        );
+      }
       return;
     }
 
     final balance = await _extractBalanceWithRetry(controller);
-    AppLogger.instance.info('校园卡余额提取结果: $balance');
+    AppLogger.instance.webview(LogLevel.info, '校园卡余额提取结果: $balance');
     if (balance == null) return;
 
     CampusCardService.instance.updateCachedBalance(balance);
@@ -344,15 +351,20 @@ class _CampusCardPageState extends State<CampusCardPage> {
         );
 
         final text = rawText is String ? rawText : '${rawText ?? ''}';
-        AppLogger.instance.debug(
-          '校园卡 retry[$delayInMs ms] 文本长度=${text.length}',
-        );
+        if (AppLogger.instance.config.value.webviewLifecycleEnabled) {
+          AppLogger.instance.webview(
+            LogLevel.debug,
+            '校园卡 retry[$delayInMs ms] 文本长度=${text.length}',
+          );
+        }
         final balance = CampusCardService.instance.parseBalanceFromPageText(
           text,
         );
         if (balance != null) return balance;
       } catch (e) {
-        AppLogger.instance.debug('校园卡 JS 提取异常: $e');
+        if (AppLogger.instance.config.value.webviewLifecycleEnabled) {
+          AppLogger.instance.webview(LogLevel.debug, '校园卡 JS 提取异常: $e');
+        }
         continue;
       }
     }

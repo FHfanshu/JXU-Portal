@@ -135,7 +135,7 @@ class DormElectricityService {
       return await request(dio).timeout(_requestTimeout);
     } catch (error) {
       if (!_shouldRetryWithSystemProxyForAny(error)) rethrow;
-      AppLogger.instance.info('$label 直连失败，尝试通过系统代理重试');
+      AppLogger.instance.network(LogLevel.warn, '$label 直连失败，尝试通过系统代理重试');
       final fallbackDio = _createProxyFallbackDio();
       try {
         return await request(fallbackDio).timeout(_requestTimeout);
@@ -238,22 +238,30 @@ class DormElectricityService {
       if (config == null) return null;
 
       final url = _buildQueryUrl(config);
-      AppLogger.instance.debug('电费查询 → $url');
+      if (AppLogger.instance.config.value.networkVerboseEnabled) {
+        AppLogger.instance.network(LogLevel.debug, '电费查询 → $url');
+      }
       final resp = await _sendWithProxyFallback<List<int>>(
         label: '宿舍电费查询',
         request: (dio) => dio.get<List<int>>(url),
       );
-      AppLogger.instance.debug(
-        '电费响应 status=${resp.statusCode} bytes=${resp.data?.length}',
-      );
+      if (AppLogger.instance.config.value.networkVerboseEnabled) {
+        AppLogger.instance.network(
+          LogLevel.debug,
+          '电费响应 status=${resp.statusCode} bytes=${resp.data?.length}',
+        );
+      }
       if (resp.data == null) return _cachedElectricity;
 
       final html = utf8.decode(resp.data!, allowMalformed: true);
       final doc = html_parser.parse(html);
       final text = doc.body?.text ?? '';
-      AppLogger.instance.debug(
-        '电费页面文本(前200): ${text.length > 200 ? text.substring(0, 200) : text}',
-      );
+      if (AppLogger.instance.config.value.networkVerboseEnabled) {
+        AppLogger.instance.network(
+          LogLevel.debug,
+          '电费页面文本(前200): ${text.length > 200 ? text.substring(0, 200) : text}',
+        );
+      }
 
       final match = RegExp(
         r'实际剩余电量\s*[（(]度[)）]\s*(?:[:：]\s*)?([0-9]+(?:\.[0-9]+)?)',
@@ -267,15 +275,23 @@ class DormElectricityService {
           _lastUpdated = DateTime.now();
           await _persistCache();
           _lastError = null;
-          AppLogger.instance.info('电费解析成功: $value 度');
+          AppLogger.instance.network(LogLevel.info, '电费解析成功: $value 度');
           return value;
         }
       }
-      AppLogger.instance.debug('电费正则未匹配，文本长度=${text.length}');
+      if (AppLogger.instance.config.value.networkVerboseEnabled) {
+        AppLogger.instance.network(
+          LogLevel.debug,
+          '电费正则未匹配，文本长度=${text.length}',
+        );
+      }
       _lastError = '数据解析失败';
       return _cachedElectricity;
     } on DioException catch (e) {
-      AppLogger.instance.error('电费网络错误: ${e.type} ${e.message}');
+      AppLogger.instance.network(
+        LogLevel.error,
+        '电费网络错误: ${e.type} ${e.message}',
+      );
       if (e.type == DioExceptionType.connectionTimeout ||
           e.type == DioExceptionType.receiveTimeout) {
         _lastError = '网络超时';
@@ -290,11 +306,14 @@ class DormElectricityService {
       _lastError = '未知错误';
       return _cachedElectricity;
     } on TimeoutException {
-      AppLogger.instance.error('电费查询超时: 超过 ${_requestTimeout.inSeconds} 秒');
+      AppLogger.instance.network(
+        LogLevel.error,
+        '电费查询超时: 超过 ${_requestTimeout.inSeconds} 秒',
+      );
       _lastError = '网络超时';
       return _cachedElectricity;
     } catch (e) {
-      AppLogger.instance.error('电费查询异常: $e');
+      AppLogger.instance.network(LogLevel.error, '电费查询异常: $e');
       _lastError = '未知错误';
       return _cachedElectricity;
     }
@@ -427,5 +446,21 @@ class DormElectricityService {
     _cachedElectricity = value;
     _lastUpdated = updatedAt;
     _cacheRestored = true;
+  }
+
+  @visibleForTesting
+  void debugSetDio(Dio? dio) {
+    _dio = dio;
+  }
+
+  @visibleForTesting
+  void debugReset() {
+    _dio?.close(force: true);
+    _dio = null;
+    _prefs = null;
+    _cacheRestored = false;
+    _cachedElectricity = null;
+    _lastUpdated = null;
+    _lastError = null;
   }
 }

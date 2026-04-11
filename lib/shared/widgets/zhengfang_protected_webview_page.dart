@@ -80,15 +80,15 @@ class _ZhengfangProtectedWebViewPageState
     String currentUrl,
   ) async {
     if (isZhengfangLoginUrl(currentUrl)) {
-      AppLogger.instance.debug('WebView 跳转到教务登录页，尝试恢复会话');
+      AppLogger.instance.webview(LogLevel.warn, 'WebView 跳转到教务登录页，尝试恢复会话');
 
       if (_preparingSession) {
-        AppLogger.instance.debug('教务会话恢复进行中，忽略重复登录页回调');
+        AppLogger.instance.webview(LogLevel.debug, '教务会话恢复进行中，忽略重复登录页回调');
         return;
       }
 
       if (_recoveryAttempted || !ZhengfangAuth.instance.isLoggedIn) {
-        AppLogger.instance.info('教务 WebView 会话恢复失败，切换为应用内登录');
+        AppLogger.instance.webview(LogLevel.warn, '教务 WebView 会话恢复失败，切换为应用内登录');
         await _showNativeLogin();
         return;
       }
@@ -130,7 +130,7 @@ class _ZhengfangProtectedWebViewPageState
         }
       });
     } catch (error) {
-      AppLogger.instance.error('准备教务 WebView 会话失败: $error');
+      AppLogger.instance.webview(LogLevel.error, '准备教务 WebView 会话失败: $error');
       if (!mounted) return;
       setState(() => _preparingSession = false);
     }

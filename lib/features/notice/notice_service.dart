@@ -75,7 +75,11 @@ class NoticeService {
       _cachedNotices = notices;
       return notices;
     } catch (_) {
-      return _cachedNotices ?? [];
+      final cachedNotices = _cachedNotices;
+      if (cachedNotices != null) {
+        return cachedNotices;
+      }
+      rethrow;
     }
   }
 
@@ -84,11 +88,7 @@ class NoticeService {
     final totalPages = _cachedTotalPages;
     if (totalPages != null && page > totalPages) return [];
 
-    try {
-      return await _fetchNoticePage(page);
-    } catch (_) {
-      return [];
-    }
+    return _fetchNoticePage(page);
   }
 
   Future<List<Notice>> _fetchNoticePage(int page) async {

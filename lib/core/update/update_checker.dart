@@ -39,7 +39,7 @@ class UpdateChecker {
         release: release,
       );
     } catch (error) {
-      AppLogger.instance.debug('更新检查异常: $error');
+      AppLogger.instance.network(LogLevel.warn, '更新检查异常: $error');
       return const UpdateCheckResult(UpdateCheckStatus.error);
     } finally {
       isChecking.value = false;
