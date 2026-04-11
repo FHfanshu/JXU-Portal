@@ -15,14 +15,14 @@ class WebVpnProtectedWebViewPage extends StatefulWidget {
     super.key,
     required this.title,
     required this.url,
-    this.preferWebViewBackNavigation = false,
+    this.showWebViewBottomBackButton = false,
     this.onHomePressed,
     this.appBarActions = const [],
   });
 
   final String title;
   final String url;
-  final bool preferWebViewBackNavigation;
+  final bool showWebViewBottomBackButton;
   final VoidCallback? onHomePressed;
   final List<Widget> appBarActions;
 
@@ -215,7 +215,7 @@ class _WebVpnProtectedWebViewPageState
       url: ZhengfangAuth.instance.buildWebVpnProxyUrl(widget.url),
       enableLoginQuickFill: true,
       onLoadStop: _handleLoadStop,
-      preferWebViewBackNavigation: widget.preferWebViewBackNavigation,
+      showWebViewBottomBackButton: widget.showWebViewBottomBackButton,
       onHomePressed: widget.onHomePressed,
       appBarActions: widget.appBarActions,
     );

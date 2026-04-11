@@ -214,7 +214,7 @@ class _NoticeListPageState extends State<NoticeListPage> {
                           ),
                           'serviceUrl': notice.url,
                           'loginDescription': '通知公告可直连访问，但需先完成统一认证',
-                          'preferWebViewBackNavigation': true,
+                          'showWebViewBottomBackButton': true,
                         },
                       );
                     },

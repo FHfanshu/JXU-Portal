@@ -19,7 +19,7 @@ class UnifiedAuthProtectedWebViewPage extends StatefulWidget {
     this.onLoadStop,
     this.onNavigationRequest,
     this.emulateDingTalkEnvironment = true,
-    this.preferWebViewBackNavigation = false,
+    this.showWebViewBottomBackButton = false,
     this.onHomePressed,
     this.appBarActions = const [],
   });
@@ -31,7 +31,7 @@ class UnifiedAuthProtectedWebViewPage extends StatefulWidget {
   final WebViewLoadStopCallback? onLoadStop;
   final WebViewNavigationRequestCallback? onNavigationRequest;
   final bool emulateDingTalkEnvironment;
-  final bool preferWebViewBackNavigation;
+  final bool showWebViewBottomBackButton;
   final VoidCallback? onHomePressed;
   final List<Widget> appBarActions;
 
@@ -220,7 +220,7 @@ class _UnifiedAuthProtectedWebViewPageState
         onLoadStop: _handleLoadStop,
         onNavigationRequest: widget.onNavigationRequest,
         emulateDingTalkEnvironment: widget.emulateDingTalkEnvironment,
-        preferWebViewBackNavigation: widget.preferWebViewBackNavigation,
+        showWebViewBottomBackButton: widget.showWebViewBottomBackButton,
         onHomePressed: widget.onHomePressed,
         appBarActions: widget.appBarActions,
       );

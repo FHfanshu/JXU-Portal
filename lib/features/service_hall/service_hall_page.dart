@@ -13,7 +13,7 @@ class ServiceHallPage extends StatelessWidget {
       url:
           'https://mobilehall.zjxu.edu.cn/mportal/start/index.html#/business/ydd/portal/home',
       loginDescription: '统一认证登录后可直接进入服务大厅',
-      preferWebViewBackNavigation: true,
+      showWebViewBottomBackButton: true,
       onHomePressed: () => context.goNamed('home'),
     );
   }
