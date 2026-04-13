@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">jdhq.wap.zjxu.edu.cn</domain>
+        <domain includeSubdomains="true">ecard.zjxu.edu.cn</domain>
+        <domain includeSubdomains="true">job.zjxu.edu.cn</domain>
+        <domain includeSubdomains="true">jdxljk.zjxu.edu.cn</domain>
+        <domain includeSubdomains="true">lxxt.zjxu.edu.cn</domain>
+        <domain includeSubdomains="true">sjjx.zjxu.edu.cn</domain>
+    </domain-config>
+</network-security-config>
